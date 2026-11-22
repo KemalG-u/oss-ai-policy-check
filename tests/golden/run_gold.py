@@ -5,6 +5,13 @@
     python tests/golden/run_gold.py --split all --offline       # reproduce from the cache, no network
     python tests/golden/run_gold.py --cv --offline              # development-set report (see below)
     python tests/golden/run_gold.py --fetch-only                # fill the cache, print nothing about labels
+    python tests/golden/run_gold.py --classifier claude --split dev   # same pipeline, Claude picks the verdict
+
+--classifier claude (optional `anthropic` extra, credentials from the SDK: ANTHROPIC_API_KEY or `ant auth login`)
+sends the AI-policy paragraphs of every repository to Claude. Every model response is cached on disk under
+`_llm_cache/<model>/<sha256 of system prompt and user prompt>.json`, so a rerun with an unchanged prompt costs nothing
+(--llm-cache-only: a missing response is an error for that row, no API call at all). The run prints token totals and an
+estimated cost at list price (Opus 5.5: $4 in / $20 out per MTok). The deterministic rules stay the default.
 
 Labels are pinned to the commit SHAs in gold.jsonl (scan date 2026-11-22); the tool is always run at
 that SHA, never at HEAD. For rows with source "org" the repository SHA is taken from the note
@@ -40,6 +47,7 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 
 HERE = Path(__file__).resolve().parent
 # OSS_GOLD_SRC points at another checkout of src/ (used to measure the baseline of an older commit).
@@ -175,14 +183,68 @@ class CachingClient:
         raise NotFoundError("HTTP 404")
 
 
-def run_row(row: dict, client: CachingClient) -> dict:
+class LlmCacheMiss(Exception):
+    """--llm-cache-only and the response is not on disk."""
+
+
+class LlmCache:
+    """Wraps the SDK client: `client.beta.messages.create(**kwargs)` is answered from disk when the (model, prompt)
+    pair was seen before, else forwarded to `inner` and stored. Only finished answers (stop_reason end_turn) are
+    stored, so a refusal or a cut-off answer is retried on the next run. Never touches credentials."""
+
+    def __init__(self, directory: Path, inner=None):
+        self.directory, self.inner = directory, inner
+        self.hits = self.calls = 0
+        self.billed_in = self.billed_out = 0
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self.create))
+
+    @staticmethod
+    def key(kwargs: dict) -> str:
+        """sha256 over system prompt and messages; the model id is the directory, so the pair is the key."""
+        system = kwargs.get("system")
+        system_text = system if isinstance(system, str) else json.dumps(system, sort_keys=True)
+        prompt = json.dumps(kwargs["messages"], sort_keys=True) + "\0" + system_text
+        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+    def create(self, **kwargs):
+        target = self.directory / re.sub(r"[^A-Za-z0-9._-]", "_", kwargs["model"]) / (self.key(kwargs) + ".json")
+        if target.exists():
+            self.hits += 1
+            data = json.loads(target.read_text(encoding="utf-8"))
+            return SimpleNamespace(stop_reason=data["stop_reason"], stop_details=None,
+                                   content=[SimpleNamespace(type="text", text=data["text"])],
+                                   usage=SimpleNamespace(**data["usage"]))
+        if self.inner is None:
+            raise LlmCacheMiss(f"no cached response for model {kwargs['model']} ({target.name[:12]})")
+        response = self.inner.beta.messages.create(**kwargs)
+        self.calls += 1
+        counts = {name: int(getattr(response.usage, name, 0) or 0)
+                  for name in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")}
+        self.billed_in += counts["input_tokens"] + counts["cache_creation_input_tokens"] + counts["cache_read_input_tokens"]
+        self.billed_out += counts["output_tokens"]
+        text = next((b.text for b in response.content if getattr(b, "type", None) == "text"), None)
+        if response.stop_reason == "end_turn" and text is not None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps({"model": kwargs["model"], "stop_reason": "end_turn",
+                                          "text": text, "usage": counts}, indent=1), encoding="utf-8")
+        return response
+
+
+def run_row(row: dict, client: CachingClient, llm=None) -> dict:
     snapshot = fetch_snapshot(row["repo"], target_ref(row), client)
-    classification = classify_documents(snapshot.documents, owner=row["repo"].split("/")[0])
-    report = build_report(snapshot, classification)
+    if llm is None:
+        classification = classify_documents(snapshot.documents, owner=row["repo"].split("/")[0])
+        report = build_report(snapshot, classification)
+        reason = ""
+    else:  # the same pipeline the command line uses
+        from oss_ai_policy_check.cli import report_from_snapshot
+        report, outcome = report_from_snapshot(snapshot, row["repo"], llm)
+        classification, reason = outcome.classification, outcome.reason
     return {"repo": row["repo"], "gold": row["verdict"], "pred": report["verdict"],
             "confidence": row["confidence"], "tool_confidence": report["confidence"],
             "review_reason": report["review_reason"], "complete": report["complete"],
-            "evidence": [{**e, "rule": c["rule"]}
+            "classifier": report.get("classifier"), "reason": reason,
+            "evidence": [{**e, "rule": c.get("rule", "-")}
                          for e, c in zip(report["evidence"], classification["evidence"])][:4]
             or [{**e, "rule": "-"} for e in report["evidence"][:4]],
             "unclassified": len(report["unclassified_ai_lines"]),
@@ -311,6 +373,22 @@ def print_causes(results: list[dict]) -> None:
             print(f"    {r['repo']} [{r['split']}] gold={r['gold']} ({r['confidence']}) pred={r['pred']}")
 
 
+def print_llm_usage(llm, cache: LlmCache, repos: int) -> None:
+    from oss_ai_policy_check.llm import estimate_cost
+
+    def money(i: int, o: int) -> str:
+        cost = estimate_cost(i, o, llm.model)
+        return "n/a (no price for this model)" if cost is None else f"${cost:.2f}"
+
+    u = llm.usage
+    print(f"\nclaude {llm.model}: {repos} repositories, {u.calls} responses ({cache.hits} from the cache, "
+          f"{cache.calls} new API calls)")
+    print(f"  tokens in all responses: {u.input_tokens} in / {u.output_tokens} out = "
+          f"{money(u.input_tokens, u.output_tokens)} at list price (what a cold run costs)")
+    print(f"  billed this run:         {cache.billed_in} in / {cache.billed_out} out = "
+          f"{money(cache.billed_in, cache.billed_out)} (prompt-cache discounts not applied)")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=("dev", "holdout", "all"), default="dev")
@@ -322,7 +400,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summary", action="store_true", help="metrics only, no per-repo misses")
     ap.add_argument("--holdout-misses", action="store_true", help="also list holdout misses (do not use while tuning)")
     ap.add_argument("--out", type=Path, help="write per-repo results as JSON")
+    ap.add_argument("--classifier", choices=("rules", "claude"), default="rules",
+                    help="rules (default) or claude (model responses cached under --llm-cache)")
+    ap.add_argument("--model", help="Claude model id (default: the tool's default model)")
+    ap.add_argument("--llm-cache", type=Path, default=HERE / "_llm_cache", help="directory of cached model responses")
+    ap.add_argument("--llm-cache-only", action="store_true",
+                    help="never call the API: a response that is not cached is an error for that row")
     args = ap.parse_args(argv)
+    if args.model and args.classifier != "claude":
+        ap.error("--model needs --classifier claude")
     if args.cv:
         args.split = "all"
 
@@ -330,10 +416,20 @@ def main(argv: list[str] | None = None) -> int:
     split = split_gold(rows)
     chosen = [r for r in rows if args.split == "all" or split[r["repo"]] == args.split]
     client = CachingClient(args.cache, org_pins(rows), offline=args.offline)
+    llm = llm_cache = None
+    if args.classifier == "claude":
+        from oss_ai_policy_check import llm as llm_module  # imported here: an older OSS_GOLD_SRC baseline has no llm
+        try:
+            sdk = None if args.llm_cache_only else llm_module.load_sdk()
+        except llm_module.ClaudeUnavailable as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        llm_cache = LlmCache(args.llm_cache, None if sdk is None else sdk.Anthropic())  # the SDK finds the credentials
+        llm = llm_module.ClaudeClassifier(llm_cache, args.model or llm_module.DEFAULT_MODEL, sdk)
     results = []
     for row in chosen:
         try:
-            result = run_row(row, client)
+            result = run_row(row, client, llm)
         except Exception as exc:  # keep going; one bad repo must not hide the rest
             print(f"ERROR {row['repo']}: {type(exc).__name__}: {exc}", file=sys.stderr)
             result = {"repo": row["repo"], "gold": row["verdict"], "pred": "error", "confidence": row["confidence"],
@@ -365,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.out:
         args.out.write_text(json.dumps(results, indent=1), encoding="utf-8")
     print(f"\nnetwork requests this run: {client.network}")
+    if llm is not None:
+        print_llm_usage(llm, llm_cache, len(results))
     return 0
 
 

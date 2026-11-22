@@ -6,6 +6,8 @@ Public API
     decide(evidence, review) -> (verdict, review_reason, confidence)
     body_rules(documents, patterns=None) -> dict
     body_flags(classification) -> dict
+    extract_paragraphs(documents, patterns=None, owner=None, evidence_lines=()) -> list[PolicyParagraph]
+    combine(rules, llm) -> (classification, note | None)   # the Claude path: rules and model verdict together
 
 The classifier abstains instead of guessing: a verdict of `needs-review` means AI-policy text exists that no
 rule decided on, or the evidence conflicts (`decide` holds the precedence, docs/schema.md "Decision order").
@@ -22,10 +24,11 @@ import json
 import re
 from importlib import resources
 from pathlib import Path
-from typing import Any, Mapping, TypedDict
+from typing import Any, Iterable, Mapping, TypedDict
 
 from .contract import (BANNED, DISCLOSURE_REQUIRED, HIGH, LOW, MAX_REVIEW_PARAGRAPHS, NEEDS_REVIEW,
-                       NO_POLICY_FOUND, PERMITTED, RESTRICTED, SEVERITY, clip_quote, verdict_from_signals)
+                       NO_POLICY_FOUND, PERMITTED, RESTRICTED, REVIEW_LLM_DISAGREE, REVIEW_LLM_LOW, SEVERITY,
+                       clip_quote, dedupe_evidence, verdict_from_signals)
 from .discover import AGENT_GENERATED, AI_PHRASES, AI_WORDS, POLICY_VERBS
 
 
@@ -260,6 +263,8 @@ class _Rules:
                         prohibitive heading ("Unacceptable uses", "Do not"): the heading is the prohibition
       ungated           the rule also runs on paragraphs that never mention AI (agent instruction files)
       weak              true: the rule is a loose heuristic; its evidence carries confidence "low"
+      demote_document   regexes tested on the whole file: a hedged welcome elsewhere in it ("AI assistance is
+                        usually fine") means a ban sentence is a qualified ban, so it is demoted like demote_on
       demote_on         names from `named`: a sentence that matches one still fires, but as `demote_to`
                         (default "restricted") with confidence "low" instead of the rule's own class. A ban
                         that carries a narrowing qualifier ("unreviewed", "fully", "unless") is not a full ban.
@@ -280,6 +285,8 @@ class _Rules:
         self.review_verbs = re.compile(review["soft_verbs"], re.I) if review.get("soft_verbs") else None
         self.cue = re.compile(data.get("related_cue", r"vouch|unreviewed|reviewed.*contributor|own human voice"), re.I)
         self.rules = []
+        self.demote_document = {r["id"]: [re.compile(x, re.I) for x in r.get("demote_document", [])]
+                                for r in data["rules"]}
         for rule in data["rules"]:
             self.rules.append((
                 rule, re.compile(rule["regex"], re.I),
@@ -302,7 +309,7 @@ class _Rules:
         return any(r.get("ungated") and (paths is None or paths.search(path)) for r, _, paths, _, _, _ in self.rules)
 
     def judge(self, rule: Mapping[str, Any], excludes: list[re.Pattern[str]], sentence: str,
-              prohibitive: bool = False) -> str | None:
+              prohibitive: bool = False, demote_all: bool = False) -> str | None:
         """None: the sentence is not a signal of this rule. "ok": it is. "demote": it is, but carries a
         narrowing qualifier, so the rule's class is downgraded and the evidence is low confidence."""
         if any(x.search(sentence) for x in excludes):
@@ -318,7 +325,7 @@ class _Rules:
             rest = self.named["narrow"].sub(" ", sentence)
             if rest != sentence and not self.named["broad"].search(rest):
                 return None
-        if any(self.named[n].search(sentence) for n in rule.get("demote_on", [])):
+        if demote_all or any(self.named[n].search(sentence) for n in rule.get("demote_on", [])):
             return "demote"
         return "ok"
 
@@ -378,6 +385,158 @@ def decide(evidence: list[ClassifiedEvidence], review: list[dict[str, Any]]) -> 
     return NO_POLICY_FOUND, None, HIGH
 
 
+class PolicyParagraph(TypedDict):
+    """One AI-policy-bearing paragraph, ready to be shown to a language model."""
+    id: str        # "file:line" of the anchor line; the model answers with these ids, never with text
+    file: str
+    line: int      # anchor line (1-based): where the AI term first appears, or the first rule evidence line
+    first: int     # first line of the paragraph (1-based)
+    last: int      # last line of the paragraph (1-based, inclusive)
+    text: str      # the paragraph's source lines (code blocks and "Example" sections already blanked out)
+    quote: str     # clip_quote of the anchor line: the evidence quote built for this paragraph
+    flagged: bool  # a rule of the deterministic classifier fired inside it
+
+
+SECTION_MAX_LINES = 60     # a heading's body is cut after this many source lines ...
+SECTION_MAX_CHARS = 1800   # ... or this many characters (the same cap llm.py applies to every paragraph)
+BOLD_HEADING = re.compile(r"^\s{0,3}(?::octicon:\S+\s+)?\*\*[^*]{2,80}?\*\*:?\s*$")
+
+
+def _heading_level(line: str) -> int:
+    """1-6 for a Markdown heading, 7 for a line that is only bold text (a heading of the lowest level), else 0."""
+    found = HEADING.match(line)
+    if found:
+        return len(found.group(1))
+    return 7 if BOLD_HEADING.match(line) else 0
+
+
+def _section(lines: list[str], start: int, end: int, heading: str, pointer: re.Pattern[str] | None,
+             rules: "_Rules", path: str, wanted: Iterable[int]) -> PolicyParagraph | None:
+    """A heading that names AI carries its body: the following lines up to the next heading of the same or a higher
+    level (capped). None when the heading names no AI, has no body, or the whole section is no policy text. Pure."""
+    if not (AI_WORDS.search(heading) or AI_PHRASES.search(heading) or AGENT_GENERATED.search(heading)):
+        return None
+    level = min(_heading_level(line) for line in lines[start:end])
+    stop, size = end, sum(len(line) + 1 for line in lines[start:end])
+    while stop < len(lines) and stop - end < SECTION_MAX_LINES:
+        depth = _heading_level(lines[stop])
+        if depth and depth <= level:
+            break
+        if stop > end and size + len(lines[stop]) > SECTION_MAX_CHARS:
+            break
+        size += len(lines[stop]) + 1
+        stop += 1
+    while stop > end and not lines[stop - 1].strip():
+        stop -= 1
+    body = [n for n in range(end, stop) if lines[n].strip() and not _heading_level(lines[n])]
+    if not body:
+        return None  # nothing under the heading: never send the heading alone
+    text = "\n".join(lines[start:stop]).strip("\n")
+    plain = text.replace("*", " ")
+    if (pointer and pointer.search(plain)) or not rules.review_worthy(path, plain):
+        return None
+    hits = sorted(n for n in wanted if end < n <= stop)
+    verbs = [n for n in body if POLICY_VERBS.search(lines[n]) or (rules.review_verbs and rules.review_verbs.search(lines[n]))]
+    anchor = hits[0] if hits else (verbs[0] + 1 if verbs else body[0] + 1)
+    first = start + 1
+    while not lines[first - 1].strip():
+        first += 1
+    return {"id": f"{path}:{anchor}", "file": path, "line": anchor, "first": first, "last": stop,
+            "text": text, "quote": clip_quote(lines[anchor - 1]), "flagged": bool(hits)}
+
+
+def extract_paragraphs(documents: Mapping[str, str], patterns: dict[str, Any] | None = None,
+                       owner: str | None = None,
+                       evidence_lines: Iterable[tuple[str, int]] = ()) -> list[PolicyParagraph]:
+    """The paragraphs a reader has to see to judge the AI policy, in file and line order.
+
+    Same notion of "AI-policy text" as `classify_documents` (an AI term plus a policy verb, outside code and
+    "Example" sections, minus pointers to the owner policy and statements of absence), plus every paragraph that
+    contains one of `evidence_lines` ((file, line) pairs of deterministic rule evidence, 1-based). Pure."""
+    data = patterns or load_patterns()
+    rules = _Rules(data)
+    pointer = re.compile(r"github\.com/" + re.escape(owner) + r"/\.github(?![\w-])", re.I) if owner else None
+    wanted: dict[str, set[int]] = {}
+    for file, line in evidence_lines:
+        wanted.setdefault(file, set()).add(line)
+    out: list[PolicyParagraph] = []
+    for path, raw in sorted(documents.items()):
+        lines = strip_code(raw).splitlines()
+        covered = 0  # lines up to here (1-based, inclusive) already sit inside a section paragraph
+        for start, end, paragraph, _ in _paragraphs(lines):
+            paragraph = paragraph.replace("*", " ")
+            if end <= covered:
+                continue
+            if all(_heading_level(line) for line in lines[start:end]):
+                # A heading alone says nothing: when it names AI, the section below it is the paragraph.
+                section = _section(lines, start, end, paragraph, pointer, rules, path, wanted.get(path, ()))
+                if section:
+                    out.append(section)
+                    covered = section["last"]
+                continue
+            hits = sorted(n for n in wanted.get(path, ()) if start < n <= end)
+            term = _is_policy_paragraph(paragraph, pointer, rules.review_verbs)
+            if term and not rules.review_worthy(path, paragraph):
+                term = None
+            if not term and not hits:
+                continue
+            anchor = (_line_of(lines, start, term.start()) + 1) if term else hits[0]
+            out.append({"id": f"{path}:{anchor}", "file": path, "line": anchor, "first": start + 1, "last": end,
+                        "text": "\n".join(lines[start:end]), "quote": clip_quote(lines[anchor - 1]),
+                        "flagged": bool(hits)})
+    return out
+
+
+_POLICY_SIGNAL = (BANNED, RESTRICTED, DISCLOSURE_REQUIRED)  # a rule found something a reader must act on
+_QUIET = (NO_POLICY_FOUND, PERMITTED)                      # nothing to act on
+
+
+def combine(rules: Mapping[str, Any], llm: Mapping[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """The Claude path: join the deterministic result (`rules`) and the model's interpreted answer (`llm`, a
+    classification with `confidence` and evidence built from its deciding ids). Deterministic, no I/O.
+    Returns (classification, note); `note` is a warning line when the two disagreed. First branch that applies:
+
+      1. the model abstained (needs-review)                          -> model result
+      2. same verdict                                                -> model result
+      3. rules: ban/restriction/disclosure; model: nothing or permit -> needs-review, llm-rules-disagree
+      4. model confidence low                                        -> needs-review, llm-low-confidence
+      5. model banned/restricted, rules permitted/none               -> model result (confidence high)
+      6. rules abstained (needs-review), model confident             -> model result
+      7. both confident, any other difference                        -> model verdict, confidence low
+      8. model confident, rules only low confidence                  -> model result
+    """
+    verdict, confidence = llm["verdict"], llm.get("confidence", LOW)
+    seen = rules["verdict"]
+    if verdict == NEEDS_REVIEW or verdict == seen:
+        return dict(llm), None
+    differs = f"the deterministic rules report '{seen}' where Claude reports '{verdict}'"
+    if seen in _POLICY_SIGNAL and verdict in _QUIET:
+        return _to_review(rules, llm, REVIEW_LLM_DISAGREE), differs + "; the rules found a policy signal, so a person should read it"
+    if confidence == LOW:
+        return _to_review(rules, llm, REVIEW_LLM_LOW), differs + "; Claude was not confident, so a person should read it"
+    if seen == NEEDS_REVIEW or (verdict in (BANNED, RESTRICTED) and seen in _QUIET):
+        return dict(llm), differs
+    if rules.get("confidence") == HIGH:
+        return {**llm, "confidence": LOW}, differs + "; confidence lowered"
+    return dict(llm), differs
+
+
+def _to_review(rules: Mapping[str, Any], llm: Mapping[str, Any], reason: str) -> dict[str, Any]:
+    """needs-review that shows both sides: the model's deciding lines and the rules' evidence lines (each keeps its
+    own signal), or the paragraphs to read when neither side has a line."""
+    seen_lines: set[tuple[str, int]] = set()
+    evidence = []
+    for item in [*llm["evidence"], *rules["evidence"]]:
+        if (item["file"], item["line"]) not in seen_lines:
+            seen_lines.add((item["file"], item["line"]))
+            evidence.append(dict(item))
+    review = [x for x in [*llm.get("review", []), *rules.get("review", [])]
+              if (x["file"], x["line"]) not in seen_lines][:MAX_REVIEW_PARAGRAPHS]
+    return {"verdict": NEEDS_REVIEW, "confidence": LOW, "review_reason": reason,
+            "signals": sorted({e["signal"] for e in evidence}), "evidence": evidence, "review": review,
+            "unclassified_ai_lines": list(llm.get("unclassified_ai_lines", [])), "classifier": llm.get("classifier")}
+
+
 def classify_documents(documents: Mapping[str, str], patterns: dict[str, Any] | None = None,
                        owner: str | None = None) -> Classification:
     """Pure classifier: mapping of repository-relative path -> unmodified UTF-8 text.
@@ -421,10 +580,11 @@ def classify_documents(documents: Mapping[str, str], patterns: dict[str, Any] | 
                     continue
                 if any(x.search(paragraph) for x in paragraph_forbids):
                     continue
+                hedged = any(x.search(text) for x in rules.demote_document[rule["id"]])
                 for match in regex.finditer(paragraph):
                     left = max((x for x in bounds if x <= match.start()), default=0)
                     right = min((x for x in bounds if x >= match.end()), default=len(paragraph))
-                    verdict = rules.judge(rule, excludes, paragraph[left:right], prohibitive[start])
+                    verdict = rules.judge(rule, excludes, paragraph[left:right], prohibitive[start], hedged)
                     if verdict is None:
                         continue
                     demoted = verdict == "demote"
@@ -444,7 +604,12 @@ def classify_documents(documents: Mapping[str, str], patterns: dict[str, Any] | 
     ordered = sorted(unique.values(), key=lambda x: (-SEVERITY[x["signal"]], x["file"], x["line"], x["rule"]))
     signals = sorted({x["signal"] for x in ordered}, key=SEVERITY.get, reverse=True)
     review = [{k: v for k, v in x.items() if k != "key"} for x in policy_paragraphs if x["key"] not in covered]
+    # The verdict and its confidence count sentences, so they are decided on every item; what is reported is one
+    # item per (file, line, signal): the strong `disclosure` rule and the weak `template-ai-prompt` rule often cite
+    # the same line, and two sentences on one line are one line to a reader.
     verdict, reason, confidence = decide(ordered, review)
+    ordered = dedupe_evidence(sorted(ordered, key=lambda x: x["confidence"] != HIGH))
+    ordered.sort(key=lambda x: (-SEVERITY[x["signal"]], x["file"], x["line"], x["rule"]))
     return {"verdict": verdict, "confidence": confidence, "signals": signals,
             "evidence": ordered, "unclassified_ai_lines": mentions,
             "review": review[:MAX_REVIEW_PARAGRAPHS] if verdict == NEEDS_REVIEW else [],

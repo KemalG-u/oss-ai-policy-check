@@ -20,7 +20,7 @@ from urllib.parse import quote as url_quote
 
 from .contract import (BANNED, DISCLAIMER, DISCLOSURE_REQUIRED, FILE_ERROR, FILE_MISSING,
                        FILE_READ, FORMATS, LIMITATIONS, NEEDS_REVIEW, NO_POLICY_FOUND, PERMITTED,
-                       REVIEW_CONFLICT, RESTRICTED, SIGNALS, Report, blob_url)
+                       REVIEW_CONFLICT, REVIEW_LLM_DISAGREE, REVIEW_LLM_LOW, RESTRICTED, SIGNALS, Report, blob_url)
 
 INFORMATION_URI = "https://github.com/KemalG-u/oss-ai-policy-check"  # placeholder until the repo is public
 SARIF_VERSION = "2.1.0"
@@ -56,6 +56,9 @@ def _t(value: object) -> str:
 _REVIEW_WHY = {
     REVIEW_CONFLICT: "The cited lines point in different directions (for example a welcome next to a ban, or a "
                      "qualified ban next to a weaker rule) and no order of precedence settles it credibly.",
+    REVIEW_LLM_LOW: "The language model was not confident and the rules do not back its verdict.",
+    REVIEW_LLM_DISAGREE: "The rules found a policy signal that the language model did not, so a person should read "
+                         "the cited lines.",
 }
 _REVIEW_WHY_DEFAULT = "These paragraphs name AI and state a rule, but no rule of the tool decided on them."
 
@@ -66,6 +69,12 @@ def _review_why(report: Report) -> str:
 
 def _no_decision(report: Report) -> bool:
     return not report["complete"] and report["verdict"] in (NO_POLICY_FOUND, PERMITTED)
+
+
+def _claude(report: Report) -> str | None:
+    """Model id when a language model produced the verdict (kind "claude"), else None. Older reports have no field."""
+    info = report.get("classifier") or {}
+    return _clean(info.get("model") or "unknown") if info.get("kind") == "claude" else None
 
 
 def _location_path(path: str) -> str:
@@ -93,6 +102,8 @@ def render_text(report: Report) -> str:
         head += f" @ {_t(report['ref']) if report['ref'] else '(no ref)'}" + (f" ({sha[:12]})" if sha else "")
     lines = [head, f"confidence: {report['confidence']}",
              f"read status: {'complete within scope' if report['complete'] else 'INCOMPLETE'}"]
+    if _claude(report):
+        lines.append(f"classifier: claude ({_claude(report)}); the cited lines are the evidence, open them to check")
     if report["verdict"] == NEEDS_REVIEW:
         lines.append(f"NEEDS HUMAN REVIEW ({report['review_reason']}): {_review_why(report)}")
     if _no_decision(report):
@@ -154,7 +165,9 @@ def render_markdown(report: Report) -> str:
 
     out = [MARKDOWN_MARKER, f"## AI policy check: {badge}", "", f"**Repository:** {where}", "",
            _alert(_ALERT_KIND[verdict], f"**{_md(badge)}.** {_MEANING[verdict]}"),
-           "", f"**Confidence:** {report['confidence']}"]
+           "", f"**Confidence:** {report['confidence']}"
+           + (f" | **Classifier:** Claude (`{_claude(report).replace('`', '')}`), check the cited lines"
+              if _claude(report) else "")]
     if not report["complete"]:
         tail = ("so a ban or restriction may be missing: there is no decision." if _no_decision(report)
                 else "so the policy may be stricter than shown.")
@@ -255,6 +268,8 @@ def render_sarif(report: Report) -> str:
                        "unclassifiedAiLines": len(report["unclassified_ai_lines"]),
                        "disclaimer": DISCLAIMER},
     }
+    if _claude(report):
+        run["properties"]["classifier"] = {"kind": "claude", "model": _claude(report)}
     if sha:
         provenance = {"repositoryUri": f"https://github.com/{repo}", "revisionId": sha}
         if report["ref"]:

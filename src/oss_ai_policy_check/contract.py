@@ -34,9 +34,16 @@ FAIL_ON_CHOICES = (BANNED, RESTRICTED, DISCLOSURE_REQUIRED, NEEDS_REVIEW)
 HIGH, LOW = "high", "low"
 CONFIDENCES = (HIGH, LOW)
 REVIEW_NO_RULE, REVIEW_CONFLICT = "no-rule-decision", "conflicting-signals"
-REVIEW_REASONS = (REVIEW_NO_RULE, REVIEW_CONFLICT)
+# Only the optional Claude classifier writes these two (docs/llm-mode.md, "How the verdicts are combined").
+REVIEW_LLM_LOW, REVIEW_LLM_DISAGREE = "llm-low-confidence", "llm-rules-disagree"
+REVIEW_REASONS = (REVIEW_NO_RULE, REVIEW_CONFLICT, REVIEW_LLM_LOW, REVIEW_LLM_DISAGREE)
 MAX_REVIEW_PARAGRAPHS = 20
 FORMATS = ("text", "json", "markdown", "sarif")
+# Which classifier produced the verdict. "rules" (default) is the deterministic classifier, needs no key. "claude" is
+# the optional language-model classifier (`--classifier claude`); it only chooses a verdict and paragraph ids, and the
+# evidence lines and links are still built here from those ids.
+CLASSIFIER_RULES, CLASSIFIER_CLAUDE = "rules", "claude"
+CLASSIFIERS = (CLASSIFIER_RULES, CLASSIFIER_CLAUDE)
 
 FILE_READ, FILE_MISSING, FILE_ERROR = "read", "missing", "error"
 FILE_STATUSES = (FILE_READ, FILE_MISSING, FILE_ERROR)
@@ -97,6 +104,11 @@ class Tool(TypedDict):
     version: str
 
 
+class ClassifierInfo(TypedDict):
+    kind: str  # rules | claude
+    model: str | None  # the model id for kind "claude", else None
+
+
 class Report(TypedDict):
     schema_version: str
     repo: str
@@ -112,6 +124,7 @@ class Report(TypedDict):
     files_checked: list[FileChecked]
     warnings: list[str]
     tool: Tool
+    classifier: ClassifierInfo  # optional in the schema (reports of tool 0.2.0 and older have none); always written
 
 
 @dataclass
@@ -146,6 +159,19 @@ def verdict_from_signals(signals: Iterable[str]) -> str:
     return NO_POLICY_FOUND
 
 
+def dedupe_evidence(items: Iterable[Any]) -> list[Any]:
+    """Evidence is unique per (file, line, signal): when several rules (or the model) cite the same line for the
+    same signal, one item stays, the one with the highest confidence (the first on a tie). Order is kept: an item
+    sits where its first occurrence was. Works on report evidence and on classifier evidence alike."""
+    kept: dict[tuple[Any, Any, Any], Any] = {}
+    for item in items:
+        key = (item["file"], item["line"], item["signal"])
+        old = kept.get(key)
+        if old is None or (item.get("confidence", LOW) == HIGH and old.get("confidence", LOW) != HIGH):
+            kept[key] = item
+    return list(kept.values())
+
+
 def blob_url(repo: str, sha: str | None, path: str, line: int, org_sha: str | None = None) -> str | None:
     """Permalink pinned to a commit SHA; None when no SHA is known.
 
@@ -171,7 +197,7 @@ def build_report(snapshot: Snapshot, classification: Mapping[str, Any]) -> Repor
         for item in classification["evidence"]]
     abstain = classification["verdict"] == NEEDS_REVIEW
     reason = (classification.get("review_reason") or REVIEW_NO_RULE) if abstain else None
-    if abstain and reason == REVIEW_NO_RULE:
+    if abstain and (reason == REVIEW_NO_RULE or not evidence):
         # no rule decided: the AI-policy paragraphs themselves are the evidence. With conflicting signals the
         # classified evidence lines are the paragraphs in conflict.
         evidence += [
@@ -179,6 +205,7 @@ def build_report(snapshot: Snapshot, classification: Mapping[str, Any]) -> Repor
              "url": blob_url(snapshot.repo, snapshot.commit_sha, item["file"], item["line"], snapshot.org_commit_sha),
              "signal": NEEDS_REVIEW, "confidence": LOW, "quote": item["quote"]}
             for item in classification.get("review", [])]
+    evidence = dedupe_evidence(evidence)  # one item per (file, line, signal), whichever classifier produced them
     confidence = classification.get("confidence", LOW)
     if not snapshot.complete and classification["verdict"] in (NO_POLICY_FOUND, PERMITTED):
         confidence = LOW  # unread files: nothing is decided, so nothing is "high"
@@ -197,6 +224,7 @@ def build_report(snapshot: Snapshot, classification: Mapping[str, Any]) -> Repor
         "files_checked": [dict(item) for item in snapshot.files_checked],  # type: ignore[misc]
         "warnings": list(snapshot.warnings),
         "tool": {"name": TOOL_NAME, "version": __version__},
+        "classifier": dict(classification.get("classifier") or {"kind": CLASSIFIER_RULES, "model": None}),  # type: ignore[misc]
     }
 
 

@@ -14,7 +14,7 @@
     "org_commit_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
     "verdict": {"enum": ["banned", "restricted", "disclosure-required", "needs-review", "permitted", "no-policy-found"]},
     "confidence": {"enum": ["high", "low"]},
-    "review_reason": {"enum": ["no-rule-decision", "conflicting-signals", null]},
+    "review_reason": {"enum": ["no-rule-decision", "conflicting-signals", "llm-low-confidence", "llm-rules-disagree", null]},
     "complete": {"type": "boolean"},
     "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
     "unclassified_ai_lines": {"type": "array", "items": {"$ref": "#/$defs/unclassified"}},
@@ -25,6 +25,12 @@
       "additionalProperties": false,
       "required": ["name", "version"],
       "properties": {"name": {"const": "oss-ai-policy-check"}, "version": {"type": "string"}}
+    },
+    "classifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "model"],
+      "properties": {"kind": {"enum": ["rules", "claude"]}, "model": {"type": ["string", "null"]}}
     }
   },
   "$defs": {

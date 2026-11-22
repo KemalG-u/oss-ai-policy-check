@@ -1,6 +1,6 @@
 # Limitations
 
-These are the known limits of version 0.2.0. A result is a heuristic signal, not legal advice, and never
+These are the known limits of version 0.3.0. A result is a heuristic signal, not legal advice, and never
 permission to contribute with AI. The text of the policy itself is what counts.
 
 ## Classification
@@ -8,15 +8,13 @@ permission to contribute with AI. The text of the policy itself is what counts.
 - **The classifier is regex based.** It matches wording, not meaning. It can miss a policy phrased in an
   unusual way and can flag a line that says something else.
 - **Accuracy is measured, and it is moderate.** The tool is a finder: it locates the policy text and links
-  the lines, and the class on top is a hint with a confidence level. On blind set B (60 unseen repositories,
-  about half deliberately hard, commit de7caa1, 2026-11-22) the decided rows are 68.9% correct (31 of 45), 25.0%
-  of repositories (15 of 60) come back as `needs-review`, one says "no policy" although one exists, and the
-  overall exact verdict is 51.7% (31 of 60). On blind set A (60 unseen repositories, same commit and date,
-  viewed before the `needs-review` change) the decided rows are 74.0% correct (37 of 50), 16.7% (10 of 60)
-  abstain and none says "no policy" when one exists. Set B is the cleaner figure. Labels are one person's
-  reading of the rubric, pinned to SHAs. The 151-repository gold set is a development set: every row was read
-  while tuning, so its figures (below) are optimistic. The tables, the confusion matrix and the method are in
-  the [accuracy section](#measured-accuracy) below; the design behind the abstentions is in
+  the lines, and the class on top is a hint with a confidence level. On gold4, a never-used set of 60
+  repositories (single run, labels by one annotator), the rules alone give the labelled verdict for 42 of 60
+  repositories (70.0%, Wilson 95% interval 57% - 80%): 42 of 53 on the rows where they decide, 7 come back as
+  `needs-review`, and 3 say "no policy" although one exists. Claude mode (`--classifier claude`) scored 55 of 60
+  on the same set, with the caveat that the judge was Claude Sonnet 5.5 rather than the default model; see
+  [Measured accuracy](#measured-accuracy) below and the README. The 151-repository gold set is a development set:
+  every row was read while tuning, so its figures (below) are optimistic. The design behind the abstentions is in
   [Abstention and confidence](#abstention-and-confidence).
 - **Context is one paragraph.** A rule that depends on another section, a table or an image is not seen.
   Exclusions are tested against the sentence of the match only. Two exceptions are deliberate: a list
@@ -54,8 +52,8 @@ permission to contribute with AI. The text of the policy itself is what counts.
   about a fifth of the labelled `restricted` repositories. Only a full ban, or a restriction that is nothing
   but a qualified ban, next to a welcome makes the tool step back.
 - **The abstain rate on unseen repositories is higher than on the development set.** It is 6.0% (9 of 151) on
-  the development set because the rules were tuned on those rows, and 16.7% (10 of 60) and 25.0% (15 of 60) on
-  the two blind sets; that is the intended behaviour for unusual wording.
+  the development set because the rules were tuned on those rows, and 11.7% (7 of 60) on the blind set gold4; that
+  is the intended behaviour for unusual wording.
 - **The README and agent-instruction files are filtered.** A README or an `AGENTS.md` paragraph counts as
   AI-policy text only when it also speaks about contributing (contribution, pull request, patch, commit,
   issue, disclosure, "AI policy"), because those files mostly describe a product or give commands to a tool.
@@ -99,13 +97,18 @@ report the 50 former holdout rows separately. Hand-written rules cannot be cross
 nothing to fit per fold), so `python tests/golden/run_gold.py --cv --offline` prints the whole set, the
 former holdout rows, per-class precision and recall, and the misses grouped by cause.
 
-Blind results for the current rules (rules 4.0, commit de7caa1, scored on 2026-11-22; labels by a single
-labeler, pinned to SHAs). These are the figures to expect on repositories the rules have not seen:
+Blind results (gold4: 60 repositories never used to write or tune a rule or the prompt; single run; labels by a
+single annotator, pinned to SHAs). These are the figures to expect on repositories the rules have not seen:
 
-| blind set | repositories | decided-row accuracy | abstain rate | "no policy" when one exists | overall, abstention counted wrong |
+| classifier | correct (needs-review counted wrong) | decided rows correct | `needs-review` | "no policy" when one exists | Wilson 95% interval |
 |---|---|---|---|---|---|
-| A (viewed before the `needs-review` change) | 60 | 74.0% (37 of 50) | 16.7% (10 of 60) | 0 of 60 | not recorded |
-| B (cleaner figure; about half deliberately hard cases) | 60 | 68.9% (31 of 45) | 25.0% (15 of 60) | 1 of 60 | 51.7% (31 of 60) |
+| Rules only | 42 of 60 (70.0%) | 42 of 53 (79.2%) | 7 | 3 | 57% - 80% |
+| Claude mode | 55 of 60 (91.7%) | 55 of 56 (98.2%) | 4 | 1 | 82% - 96% |
+
+The Claude mode row used Claude Sonnet 5.5 through a subscription as the judge, standing in for the API model; the
+default model `claude-opus-5-5` was not measured. n = 60 and one run, so the intervals are wide and a rerun can move
+the figures (the model's output is not deterministic). Older blind figures from earlier rules and earlier sets are
+no longer quoted: they were measured on other sets and are superseded by this run.
 
 History on the 151-repository gold set (older rules, most rows read while tuning, so these numbers are optimistic; the rules 3.0 holdout row was unseen when it was read):
 
@@ -148,7 +151,7 @@ abstained row as missed; precision is over the verdicts the tool gave). `python 
 all of it. The `--offline` reproduction needs a filled local cache (`tests/golden/_cache`, not part of the repository): the
 first run, without `--offline`, fetches the responses from GitHub (set `GITHUB_TOKEN` to avoid the anonymous rate limit).
 
-Only the blind sets above and the rules 3.0 holdout row are unseen-data figures. The other rows were produced by rules edited with every row
+Only the gold4 blind set above and the rules 3.0 holdout row are unseen-data figures. The other rows were produced by rules edited with every row
 in view, so they say how well the rules fit this set, not how well they predict new repositories. The
 rules 3.1 work made the rules fewer and broader (18 rules became 12): a ban now needs a scope-wide
 prohibition, conditional closures, voice guidance and autocompletion-only carve-outs read as
@@ -182,7 +185,7 @@ What the numbers do not say: the set favours repositories that have a written po
 of 151), the labels are one reviewer's reading of a rubric, and the boundary between `restricted` and
 `disclosure-required` is a judgement call (several of the remaining misses sit on it). Medium and low
 confidence labels are included in "all labels". A rule set tuned until it scores about 93% on decided rows (87.4% overall) on its own
-repositories has not shown that it holds that figure elsewhere; the blind figures above (68.9% and 74.0% on decided rows) are the ones to expect.
+repositories has not shown that it holds that figure elsewhere; the gold4 figures above (70.0% correct for the rules, 79.2% on decided rows) are the ones to expect.
 
 ## Transport
 

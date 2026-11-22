@@ -43,11 +43,11 @@ Checked on 2026-11-22: the PyPI name `oss-ai-policy-check` was free (HTTP 404 on
 ## Each release
 
 ```
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-Push the branch and the tag by name, one at a time (`git push origin main`, `git push origin v0.2.0`), never
+Push the branch and the tag by name, one at a time (`git push origin main`, `git push origin v0.3.0`), never
 with `--all` or `--mirror`. The tag must equal `v` plus `__version__`; the first job fails otherwise, and
 nothing is published. Approve the `publish` job in the Actions tab (the environment requires your review).
 Afterwards:
@@ -55,7 +55,7 @@ Afterwards:
 - `uvx oss-ai-policy-check --version` in a clean shell prints the new version.
 - Create a GitHub Release from the tag (Releases, "Draft a new release", choose the tag, paste the changelog
   section).
-- The GitHub Action needs no extra step: `uses: KemalG-u/oss-ai-policy-check@v0.2.0` installs the code at that
+- The GitHub Action needs no extra step: `uses: KemalG-u/oss-ai-policy-check@v0.3.0` installs the code at that
   tag from its own checkout.
 
 ## GitHub Marketplace (optional)
@@ -70,7 +70,7 @@ no other Marketplace action or GitHub user/organization uses. If the name is tak
 
 - The workflow fails before the publish job: nothing reached PyPI. (`build` and `twine` are pinned in
   `release.yml`; update the pins deliberately.) Fix, delete the tag
-  (`git push origin :refs/tags/v0.2.0`, `git tag -d v0.2.0`) and tag again.
+  (`git push origin :refs/tags/v0.3.0`, `git tag -d v0.3.0`) and tag again.
 - The publish job fails with a trusted-publisher error: the five fields in step 3 do not match the repository,
   workflow file, or environment name exactly.
 - PyPI never accepts the same version twice, even after a deletion. A bad release is yanked in the project's

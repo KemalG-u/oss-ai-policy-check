@@ -216,6 +216,36 @@ class RuleTests(unittest.TestCase):
     def test_sanction_ban_is_not_a_ban_on_ai(self):
         self.assertNotEqual(self.verdict("Abuse of AI tools in pull requests will lead to a temporary ban."), "banned")
 
+    def test_substitution_ban_is_a_qualified_restriction(self):
+        # "as a substitute for understanding" bans a misuse, not AI: restricted at most, never banned
+        for text in ("Do not use AI-generated descriptions or summaries as a substitute for understanding the relevant code.",
+                     "Do not use AI to write code instead of understanding the system.",
+                     "Do not use an LLM to generate changes without reviewing them first.",
+                     "Do not blindly paste AI-generated code into a contribution."):
+            self.assertNotEqual(self.verdict(text), "banned", text)
+
+    def test_hedged_welcome_demotes_bans_in_the_same_document(self):
+        text = ("Usage of AI assistance is usually fine, but you are responsible for the output.\n\n"
+                "We do not accept AI-generated contributions.")
+        result = classify_documents({"CodePolicy.md": text})
+        self.assertEqual(result["verdict"], "restricted")
+        self.assertTrue(all(x["confidence"] == "low" for x in result["evidence"]))
+        # the same ban without the hedged welcome stays a ban
+        self.assertEqual(self.verdict("We do not accept AI-generated contributions."), "banned")
+
+    def test_ladybird_shaped_policy_is_not_banned_high(self):
+        text = ("## On usage of AI and LLMs\n\n"
+                "Usage of AI assistance is usually fine, but you are responsible for making sure the quality of the output "
+                "is up to the standards of the project.\n\n"
+                "Do not use an AI or LLM to generate changes, respond to issues, or participate in project discussion "
+                "without holding the output to the same standards as human-written content.\n\n"
+                "Do not use AI-generated descriptions or summaries as a substitute for understanding the relevant code, "
+                "issue, or discussion.\n")
+        result = classify_documents({"Documentation/CodePolicy.md": text})
+        self.assertEqual(result["verdict"], "restricted")
+        self.assertEqual(result["confidence"], "low")
+        self.assertNotIn("banned", {x["signal"] for x in result["evidence"]})
+
     def test_discretion_is_not_a_ban(self):
         self.assertNotEqual(self.verdict("We reserve the right to reject any pull request that appears to contain AI-generated code."), "banned")
 

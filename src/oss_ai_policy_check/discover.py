@@ -19,7 +19,8 @@ Candidate files (case-insensitive stem, text extensions only):
     AI-named files (see ai_named_rank): a basename with an AI word as a whole segment (`AI.md`,
     `ai-coding.md`, `ai-generated-code-policy.rst`, `CONTRIBUTING.ai.md`) in the repository root, `.github/`,
     `docs/`, `doc/`, `policies/` or any `contributing/` directory (at most four directories deep), and
-    `CONTRIBUTING.<x>.md` siblings. At most EXTRA_READ_LIMIT of these (plus AI-context links) are read,
+    `CONTRIBUTING.<x>.md` siblings, and policy-named files (`CodePolicy.md`; at most POLICY_NAMED_LIMIT).
+    At most EXTRA_READ_LIMIT of these (plus AI-context links) are read,
     best match first; the rest are reported by the transport as skipped.
     the owner's organisation `.github` repository, only when no repository file carries an AI policy
     statement (see has_ai_policy_text, org_policy_sources); shown as `org:.github/<path>`
@@ -80,6 +81,15 @@ LOCALE_SUFFIX = re.compile(r"[a-z]{2}(?:[-_][a-z]{2,4})?")
 # Top-level directories, besides DOC_DIRS, that the large-repository fallback and the local reader also list.
 POLICY_TREE_DIRS = {"policies", "policy", "contributing"}
 EXTRA_READ_LIMIT = 8  # AI-named candidates and AI-context links read beyond the core candidates
+# Policy-named files (`CodePolicy.md`, `code-policy.rst`, `contribution_policies.md`): a project's own conduct
+# rules for contributors, where an AI clause can sit without the file or CONTRIBUTING linking to it by AI wording.
+# Ranked after every AI-named file and capped separately, so a docs tree full of policies stays cheap.
+POLICY_NAMED_LIMIT = 3
+POLICY_NAME = re.compile(r"polic(?:y|ies)")
+# Policies about something other than contributions; a name containing one of these is not read.
+POLICY_OFF_TOPIC = re.compile(r"privacy|security|secur|licen[sc]|cookie|trademark|refund|terms|releas|deprecat|version|"
+                              r"support|retention|backport|telemetry|embargo|vulnerab|branch|stable|maintenance|"
+                              r"patent|export|accessib|brand|legal|dependenc")
 
 
 def _tokens(stem: str) -> list[str]:
@@ -105,7 +115,8 @@ def ai_named_rank(path: str) -> tuple | None:
 
     (a) the basename has an AI word (ai, llm, genai, generative) as a whole segment; (b) it is a
     `CONTRIBUTING.<x>.md` sibling (a bare language code such as `CONTRIBUTING.de.md` is a translation, not
-    one). Text extensions only, and only in the repository root, `.github/`, `docs/`, `doc/`,
+    one); (c) a policy-named file (`CodePolicy.md`, `code-policy.rst`) with a name that is not about security,
+    licences, releases and the like (tier 3, at most POLICY_NAMED_LIMIT read). Text extensions only, and only in the repository root, `.github/`, `docs/`, `doc/`,
     `documentation/`, `policies/` or below a `contributing/` directory, at most four directories deep."""
     parts = path.split("/")
     stem, ext = posixpath.splitext(parts[-1].lower())
@@ -119,6 +130,8 @@ def ai_named_rank(path: str) -> tuple | None:
         tier = 0 if POLICY_TOKENS.intersection(tokens) else 1
     elif stem.startswith(("contributing.", "contribute.")) and not LOCALE_SUFFIX.fullmatch(stem.split(".", 1)[1]):
         tier = 2
+    elif POLICY_NAME.search(stem) and not POLICY_OFF_TOPIC.search(stem):
+        tier = 3
     else:
         return None
     return (tier, location, len(parts), path)
@@ -169,7 +182,16 @@ def split_candidates(paths: Iterable[str], limit: int = EXTRA_READ_LIMIT) -> tup
     core = sorted(p for p in unique if in_scope(p) and _core_candidate(p))
     seen = set(core)
     extra = sorted((p for p in unique if p not in seen and ai_named_rank(p) is not None), key=ai_named_rank)
-    return core + extra[:limit], extra[limit:]
+    chosen: list[str] = []
+    policy_named = 0
+    for path in extra:
+        if ai_named_rank(path)[0] == 3:  # type: ignore[index]
+            if policy_named >= POLICY_NAMED_LIMIT:
+                continue
+            policy_named += 1
+        if len(chosen) < limit:
+            chosen.append(path)
+    return core + chosen, [p for p in extra if p not in chosen]
 
 
 LINK_TARGETS = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)|^\s*\[([^\]]+)\]:\s*(\S+)|<([^<>\s]+)>|^\.\. _([^:]+):\s*(\S+)", re.M)

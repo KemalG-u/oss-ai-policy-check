@@ -24,6 +24,10 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+# Only `--classifier claude` imports it; the base install stays free of dependencies.
+claude = ["anthropic>=2.0,<3"]
+
 [project.urls]
 Homepage = "https://github.com/KemalG-u/oss-ai-policy-check"
 Changelog = "https://github.com/KemalG-u/oss-ai-policy-check/blob/main/CHANGELOG.md"

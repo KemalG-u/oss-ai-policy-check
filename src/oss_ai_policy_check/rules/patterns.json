@@ -9,7 +9,8 @@
     "@degree",
     "\\b(?:raw|unverified|unchecked|untested|unedited|indiscriminate\\w*|wholesale|bulk|mass(?:[- ]produced)?)\\b",
     "\\bwall of\\b|\\bto disguise\\b|\\b(?:submitted|generated|merged|pushed|written|opened|produced)\\s+(?:\\w+\\s+){0,3}without\\s+(?:\\w+\\s+){0,2}(?:review|testing|checking|scrutiny)\\b",
-    "\\b(?:substantial|wholly|mostly|mainly|exclusively|simply|merely)\\b"
+    "\\b(?:substantial|wholly|mostly|mainly|exclusively|simply|merely)\\b",
+    "\\b(?:as an? (?:substitute|replacement) for|(?:instead|in place) of (?:\\w+\\s+){0,2}(?:understand\\w*|review\\w*|read\\w*|check\\w*|test\\w*|think\\w*)|without\\s+(?:\\w+\\s+){0,2}(?:reviewing|understanding|reading|checking|verifying|testing)|blindly)\\b"
   ],
   "review_cue": {
     "paths": "(?:^|/)(?:README[^/]*|AGENTS\\.md|CLAUDE\\.md|GEMINI\\.md|Agents\\.md|\\.cursorrules|copilot-instructions[^/]*)$",
@@ -74,6 +75,9 @@
       "demote_on": [
         "narrowing_qualifiers"
       ],
+      "demote_document": [
+        "\\b(?:AI|LLMs?)\\b[^.!?]{0,60}\\b(?:is|are)\\s+(?:usually|generally|mostly|typically|often|largely)\\s+(?:fine|ok(?:ay)?|acceptable|allowed|welcome\\w*)\\b"
+      ],
       "demote_to": "restricted"
     },
     {
@@ -99,6 +103,9 @@
       "regex": "\\b(?:AI|LLM|agent|Copilot|generative|code assistan)\\w*",
       "forbid": [
         "pointer"
+      ],
+      "exclude": [
+        "\\b(?:request\\w*|ask\\w*|invok\\w*|trigger\\w*|summon\\w*)\\b[^.!?]{0,50}\\b(?:AI|automated|bot|Copilot|LLM)\\b[^.!?]{0,30}\\breview"
       ],
       "weak": true
     },

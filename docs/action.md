@@ -3,7 +3,11 @@
 The action reads a repository's AI contribution policy with `oss-ai-policy-check`, writes the report to the job
 summary and returns the verdict as an output. It is read-only: it fetches policy files and never runs repository code.
 
-The examples use the release tag `KemalG-u/oss-ai-policy-check@v0.2.0`. A tag can be moved; for the strictest
+The action runs the deterministic rules only. It has no Claude input and never reads an Anthropic key: `--classifier
+claude` (see [llm-mode.md](llm-mode.md)) is available from the command line only, so a workflow cannot send repository
+text to a model through this action.
+
+The examples use the release tag `KemalG-u/oss-ai-policy-check@v0.3.0`. A tag can be moved; for the strictest
 pinning replace it with the full commit SHA of that tag (see [Security notes](#security-notes)).
 
 ## Inputs
@@ -78,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: policy
-        uses: KemalG-u/oss-ai-policy-check@v0.2.0
+        uses: KemalG-u/oss-ai-policy-check@v0.3.0
         with:
           repo: ${{ inputs.upstream }}
           fail-on: banned
@@ -116,7 +120,7 @@ jobs:
         with:
           persist-credentials: false
       - id: policy
-        uses: KemalG-u/oss-ai-policy-check@v0.2.0
+        uses: KemalG-u/oss-ai-policy-check@v0.3.0
         with:
           path: .
           format: markdown
@@ -168,7 +172,7 @@ jobs:
       verdict: ${{ steps.policy.outputs.verdict }}
     steps:
       - id: policy
-        uses: KemalG-u/oss-ai-policy-check@v0.2.0
+        uses: KemalG-u/oss-ai-policy-check@v0.3.0
         with:
           repo: ${{ inputs.repo || github.repository }}
           fail-on: ${{ inputs.fail-on }}
@@ -196,7 +200,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: KemalG-u/oss-ai-policy-check@v0.2.0
+  - uses: KemalG-u/oss-ai-policy-check@v0.3.0
     with:
       format: sarif
       upload-sarif: "true"
@@ -206,7 +210,7 @@ or upload it yourself, for example with a different category:
 
 ```yaml
   - id: policy
-    uses: KemalG-u/oss-ai-policy-check@v0.2.0
+    uses: KemalG-u/oss-ai-policy-check@v0.3.0
     with:
       format: sarif
   - uses: github/codeql-action/upload-sarif@<full-commit-sha> # v4
@@ -220,9 +224,9 @@ written.
 
 ## Security notes
 
-- Pin every action to a full commit SHA. A tag can be moved; a SHA cannot. This action's own tag `v0.2.0` is the
+- Pin every action to a full commit SHA. A tag can be moved; a SHA cannot. This action's own tag `v0.3.0` is the
   convenient form; for a stricter pin, resolve it once (`git ls-remote https://github.com/KemalG-u/oss-ai-policy-check
-  refs/tags/v0.2.0`) and write the SHA with the tag as a comment. Let Dependabot propose updates
+  refs/tags/v0.3.0`) and write the SHA with the tag as a comment. Let Dependabot propose updates
   (`.github/dependabot.yml` does this for this repository).
 - The action never interpolates an input into a shell script. `repo`, `ref`, `path`, `format` and `fail-on` reach
   the CLI as environment variables and are validated before use. Keep the same rule in your own workflows: pass

@@ -10,7 +10,12 @@ oss-ai-policy-check OWNER/REPO [--ref REF] [--format text|json|markdown|sarif]
                                [--path LOCAL_DIR]
                                [--fail-on banned|restricted|disclosure-required|needs-review]
                                [--no-cache] [--no-org]
+                               [--classifier rules|claude] [--model ID]
 ```
+
+`--classifier claude` is optional and off by default: the deterministic rules need no key and no extra package.
+With it, Claude judges only the AI-policy paragraphs and names the deciding ones; evidence lines and links are
+still built from those ids (see `docs/llm-mode.md`). `--model` picks the model and needs `--classifier claude`.
 
 `--path` reads a local clone of OWNER/REPO instead of GitHub (it cannot be combined with `--ref`;
 the commit SHA is read from `.git/HEAD` without running git). All interface text, field names and
@@ -34,7 +39,7 @@ One value, strongest first:
 | `no-policy-found` | no AI-policy text in the scanned scope. This is not permission |
 
 `needs-review` ranks below `disclosure-required` (it never outranks a quoted restriction) and above
-`permitted` (an abstention is not permission). It is returned in exactly two situations, named by
+`permitted` (an abstention is not permission). It is returned in two situations (four reasons in Claude mode), named by
 `review_reason`:
 
 - `no-rule-decision`: at least one paragraph contains an AI term and a policy verb (the same test as the
@@ -42,6 +47,9 @@ One value, strongest first:
   those paragraphs, each with signal `needs-review`.
 - `conflicting-signals`: rules fired, but the order of precedence below cannot settle them credibly. The
   evidence is the classified lines that conflict, each with its own signal.
+- `llm-low-confidence` and `llm-rules-disagree`: written only by `--classifier claude` when the model and the rules
+  do not agree (table in `docs/llm-mode.md`, "How the verdicts are combined"). The evidence is the model's
+  deciding lines together with the rules' lines, each with its own signal.
 
 `no-policy-found` is returned only when no such paragraph exists. A paragraph counts as AI-policy text when
 it names an AI term and a policy verb together, outside code blocks and "Example" sections, with three
@@ -102,7 +110,7 @@ A `low` verdict is still the best reading of the text; treat it as a reason to o
   "org_commit_sha": "<40 hex>" | null,
   "verdict": "banned|restricted|disclosure-required|needs-review|permitted|no-policy-found",
   "confidence": "high|low",
-  "review_reason": "no-rule-decision|conflicting-signals" | null,
+  "review_reason": "no-rule-decision|conflicting-signals|llm-low-confidence|llm-rules-disagree" | null,
   "complete": true,
   "evidence": [
     {"file": "docs/AI.md", "line": 12, "url": "https://github.com/owner/name/blob/<sha>/docs/AI.md#L12",
@@ -112,7 +120,8 @@ A `low` verdict is still the best reading of the text; treat it as a reason to o
   "files_checked": [{"path": "CONTRIBUTING.md", "status": "read|missing|error"},
                     {"path": "org:.github/AI_POLICY.md", "status": "read"}],
   "warnings": ["read failed: docs/x.md (HTTP 403)"],
-  "tool": {"name": "oss-ai-policy-check", "version": "0.2.0"}
+  "tool": {"name": "oss-ai-policy-check", "version": "0.3.0"},
+  "classifier": {"kind": "rules|claude", "model": null}
 }
 ```
 
@@ -138,6 +147,11 @@ A `low` verdict is still the best reading of the text; treat it as a reason to o
 - `files_checked[].status`: `read` (text obtained), `missing` (the file does not exist: "no policy
   there"), `error` (could not be read: "unknown"). `missing` does not make the report incomplete;
   `error` does.
+- `classifier` is optional (reports written by older tool versions have none; a consumer treats a missing field as
+  `{"kind": "rules", "model": null}`). The tool always writes it. `kind` is `rules` (the deterministic classifier) or
+  `claude` (`--classifier claude`, `model` is the model id). When a Claude call fails the verdict is the
+  deterministic one, so `kind` stays `rules`, `complete` is `false` and `warnings` says why. Adding an optional field
+  keeps `schema_version` at `"2"`.
 - `warnings` carries the human-readable reasons behind `complete: false` (the one field beyond the
   base contract, kept so incompleteness is explainable).
 

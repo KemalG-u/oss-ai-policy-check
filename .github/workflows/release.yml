@@ -1,6 +1,6 @@
 name: release
 
-# Publishes to PyPI when a version tag (v0.2.0, ...) is pushed. PyPI Trusted Publishing is used: there is no
+# Publishes to PyPI when a version tag (v0.3.0, ...) is pushed. PyPI Trusted Publishing is used: there is no
 # API token in this repository. One-time setup steps are in docs/release.md.
 
 on:

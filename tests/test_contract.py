@@ -195,7 +195,9 @@ class ReportShapeTests(unittest.TestCase):
         self.assertEqual(tuple(_support.SCHEMA["$defs"]["evidence"]["properties"]["confidence"]["enum"]), c.CONFIDENCES)
         self.assertEqual(tuple(_support.SCHEMA["$defs"]["file_checked"]["properties"]["status"]["enum"]), c.FILE_STATUSES)
         self.assertEqual(props["schema_version"]["const"], c.SCHEMA_VERSION)
-        self.assertEqual(set(_support.SCHEMA["required"]), set(c.Report.__annotations__))
+        # `classifier` is the one optional property: always written by build_report, absent from older reports
+        self.assertEqual(set(_support.SCHEMA["required"]) | {"classifier"}, set(c.Report.__annotations__))
+        self.assertEqual(tuple(props["classifier"]["properties"]["kind"]["enum"]), c.CLASSIFIERS)
 
 
 if __name__ == "__main__":

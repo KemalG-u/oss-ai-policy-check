@@ -10,7 +10,8 @@ that a machine finds the policy they wrote.
 
 ## Quick start
 
-Python 3.10 or newer, no dependencies, no login.
+Python 3.10 or newer, no dependencies, no login. The optional Claude mode adds one extra package and your own key
+(see [Claude mode](#claude-mode-optional)).
 
 ```
 uvx oss-ai-policy-check owner/repo
@@ -26,7 +27,7 @@ permissions:
 
 steps:
   - id: policy
-    uses: KemalG-u/oss-ai-policy-check@v0.2.0
+    uses: KemalG-u/oss-ai-policy-check@v0.3.0
     with:
       repo: owner/repo        # default: the repository running the workflow
       fail-on: banned         # empty means report only
@@ -42,7 +43,8 @@ python -m venv .venv
 
 Options: `--ref REF` (branch, tag or SHA), `--path DIR` (read a local clone of `owner/repo` instead of GitHub),
 `--format text|json|markdown|sarif`, `--fail-on banned|restricted|disclosure-required|needs-review`,
-`--no-cache` (skip the disk cache), `--no-org` (do not read the owner's `.github` repository), `--version`.
+`--no-cache` (skip the disk cache), `--no-org` (do not read the owner's `.github` repository),
+`--classifier rules|claude` and `--model ID` (optional Claude mode, below), `--version`.
 Fetched files are cached on disk by repository and commit SHA (`%LOCALAPPDATA%\oss-ai-policy-check\cache` on
 Windows, `$XDG_CACHE_HOME` or `~/.cache` elsewhere).
 
@@ -120,33 +122,58 @@ in that case would tell a contributor that AI use is fine when the tool simply d
 verdict stands even when `complete` is `false`. The JSON report is `schema_version` "2" (it adds the
 `needs-review` verdict, `confidence` and `review_reason`; migration notes are in [docs/schema.md](docs/schema.md#migration-from-schema_version-1)).
 
+## Claude mode (optional)
+
+Off by default. The default classifier is deterministic: fixed rules, no key, no network beyond GitHub. Claude mode
+is an opt-in second reader for the paragraphs the rules find hard:
+
+```
+pip install 'oss-ai-policy-check[claude]'
+export ANTHROPIC_API_KEY=...
+oss-ai-policy-check owner/repo --classifier claude [--model ID]
+```
+
+It needs your own Anthropic credentials; the tool never reads, prints or logs a key. Only the AI-policy paragraphs
+of the fetched files are sent to the Anthropic API under your account. Every evidence line and link is still built
+from the fetched files, never from the model's text, and a failed call keeps the deterministic verdict. How the two
+verdicts are combined, what is sent, cost and failure behaviour: [docs/llm-mode.md](docs/llm-mode.md). Measured
+effect: [Measured accuracy](#measured-accuracy).
+
 ## GitHub Action
 
 The action reads a repository's policy, writes the report to the job summary and returns the verdict as an
-output (example in the quick start above). Inputs, outputs, permissions and more examples are in
-[docs/action.md](docs/action.md).
+output (example in the quick start above). It runs the deterministic rules only; Claude mode is not available in
+the action. Inputs, outputs, permissions and more examples are in [docs/action.md](docs/action.md).
 
-## How accurate is it?
+## Measured accuracy
 
-Measured on repositories the rules had not seen. Labels are one person's reading of a written rubric, pinned
-to commit SHAs; the tool was run at commit de7caa1 on 2026-11-22.
+Both modes were run once on a 60-repository set that had never been used to write or tune a rule or the prompt
+(called gold4 here). Labels are one person's reading of the written rubric (`tests/golden/RUBRIC.md`), pinned to
+commit SHAs. "Correct" means the verdict equals the label; a `needs-review` answer counts as not correct.
 
-| blind set | repos | accuracy on decided rows | abstained (`needs-review`) | says "no policy" when one exists |
-|---|---|---|---|---|
-| A (60 unseen repositories) | 60 | 74.0% (37 of 50) | 16.7% (10 of 60) | 0 of 60 |
-| B (60 unseen repositories, about half deliberately hard) | 60 | 68.9% (31 of 45) | 25.0% (15 of 60) | 1 of 60 |
+| | correct | decided rows correct | `needs-review` | policy missed | Wilson 95% interval (correct) |
+|---|---|---|---|---|---|
+| Rules only (default) | 42 of 60 (70.0%) | 42 of 53 | 7 | 3 | 57% - 80% |
+| Claude mode (`--classifier claude`) | 55 of 60 (91.7%) | 55 of 56 | 4 | 1 | 82% - 96% |
 
-- Set B is the cleaner figure: set A was viewed before the `needs-review` change was made. Counting an
-  abstention as wrong, set B's overall exact-verdict figure is 51.7% (31 of 60).
-- "Decided rows" are the rows where the tool gave a class instead of abstaining. On these sets about seven
-  decided verdicts in ten matched the label, and between one repository in six and one in four came back as
-  `needs-review`.
-- The blind-set labels are kept out of this repository on purpose, so that future measurements stay blind.
-- The 151-repository development set scores higher (93.0% on decided rows) but every row was read while
-  tuning the rules, so that number is optimistic and says little about new repositories.
+"Decided rows" are the rows where the tool gave a class instead of abstaining. "Policy missed" is a repository
+that has an AI policy but got `no-policy-found`.
 
-What this means in practice: use the evidence lines (they are exact and linked) and the `needs-review` answer
-as the product, and the class as a first guess. Method, per-class tables and known misses are in
+Caveats, all of which matter:
+
+- n = 60 and a single run. The two intervals do not overlap, but a different 60 repositories or a second
+  run (the model's output is not deterministic) would move the figures.
+- The judge was Claude Sonnet 5.5 through a subscription, standing in for the API model. The default model of
+  Claude mode is `claude-opus-5-5`, which was not the model measured.
+- The labels were written by one annotator.
+- A label is a reading of the policy text at one commit; the label itself can be wrong or arguable at the
+  `restricted` / `disclosure-required` boundary.
+
+What this means in practice: the evidence lines and links are exact and are the product; the class is a hint with
+a confidence level. In this run Claude mode gave fewer wrong decided verdicts (1 against 11), fewer abstentions
+and fewer missed policies, at the price of a key, a network call per repository and non-deterministic output
+([docs/llm-mode.md](docs/llm-mode.md)). Older figures on the 151-repository development set, which was read while
+tuning the rules, are optimistic and kept only as history in
 [docs/limitations.md](docs/limitations.md#measured-accuracy).
 
 ## How it works and its limits
@@ -160,13 +187,16 @@ the label.
 
 ## Privacy
 
-No token is needed. The tool makes read-only GET requests for public files to GitHub's REST API
+No token is needed. In the default mode the tool makes read-only GET requests for public files to GitHub's REST API
 (`api.github.com`) and to `raw.githubusercontent.com`, and sends nothing else anywhere: the repository name,
 branch and file paths are the only data in those requests. It does not clone the repository, run any of its code,
 or write to GitHub. An optional `GITHUB_TOKEN` or `GH_TOKEN` only raises the API rate limit and goes to those two
 GitHub hosts only; the `gh` CLI is used only as a fallback when the REST API is rate limited or unreachable. No
 analytics, no telemetry, and the report never includes local paths. The only thing written locally is the
 commit-keyed file cache (`--no-cache` turns it off). Quotes are cut at 15 words and 300 characters.
+
+With `--classifier claude` the AI-policy paragraphs of the fetched public files are also sent to the Anthropic API
+under your account, with your credentials; nothing else is sent.
 
 ## Related projects
 

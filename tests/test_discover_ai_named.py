@@ -93,3 +93,36 @@ class AiLinkTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PolicyNamedTests(unittest.TestCase):
+    """Ladybird keeps its AI clause in `Documentation/CodePolicy.md`; CONTRIBUTING links the docs tree, not that file."""
+
+    def test_policy_named_files_in_doc_places_are_candidates_after_ai_named_ones(self):
+        for path in ["Documentation/CodePolicy.md", "docs/code-policy.rst", "docs/Contribution_Policies.md", "POLICY.md",
+                     ".github/code_policy.md"]:
+            rank = ai_named_rank(path)
+            self.assertIsNotNone(rank, path)
+            self.assertEqual(rank[0], 3, path)
+            self.assertTrue(is_candidate(path), path)
+        self.assertLess(ai_named_rank("docs/ai.md"), ai_named_rank("Documentation/CodePolicy.md"))
+
+    def test_off_topic_policies_and_other_places_are_not(self):
+        for path in ["docs/privacy-policy.md", "docs/SecurityPolicy.md", "docs/license-policy.md", "docs/release-policy.md",
+                     "docs/deprecation-policy.md", "src/CodePolicy.md", "tests/policy.md", "Documentation/policy.png",
+                     "docs/de/code-policy.md", "docs/a/b/c/d/policy.md"]:
+            self.assertFalse(is_candidate(path), path)
+
+    def test_policy_named_files_are_capped_and_ranked_last(self):
+        paths = ["CONTRIBUTING.md", "docs/a-policy.md", "docs/b-policy.md", "docs/c-policy.md", "docs/d-policy.md",
+                 "docs/ai-coding.md"]
+        selected, skipped = split_candidates(paths)
+        self.assertEqual(selected, ["CONTRIBUTING.md", "docs/ai-coding.md", "docs/a-policy.md", "docs/b-policy.md",
+                                    "docs/c-policy.md"])
+        self.assertEqual(skipped, ["docs/d-policy.md"])
+
+    def test_policy_named_files_do_not_take_the_ai_named_allowance(self):
+        ai = [f"docs/ai-{n}.md" for n in "abcdefgh"]
+        selected, skipped = split_candidates(["docs/z-policy.md"] + ai)
+        self.assertEqual(sorted(selected), sorted(ai))
+        self.assertEqual(skipped, ["docs/z-policy.md"])

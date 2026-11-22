@@ -5,6 +5,47 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-22
+
+### Added
+
+- Claude mode, optional and off by default: `--classifier claude [--model ID]` sends only the AI-policy
+  paragraphs to a Claude model, which names the deciding paragraphs by id. It needs your own `ANTHROPIC_API_KEY`
+  (or credentials the Anthropic SDK finds) and the optional extra `pip install 'oss-ai-policy-check[claude]'`.
+  The base install keeps `dependencies = []`: the SDK is imported only when the flag is given, and without it the
+  command exits with code 2 and an install hint. Evidence quotes and SHA-pinned links are still built from the
+  fetched files; the model cannot invent a line or a link. A failed call (refusal, rate limit, API error,
+  malformed answer) keeps the deterministic verdict and sets `complete: false`. Details, request settings and
+  cost: `docs/llm-mode.md`.
+- The report carries `classifier` (`{"kind": "rules|claude", "model": ...}`); `review_reason` gains
+  `llm-low-confidence` and `llm-rules-disagree`, written only in Claude mode.
+- Rules/LLM combination: a fixed table (`classify.combine`, no further call) joins the model verdict with the
+  deterministic one. A quiet model answer against a rule hit, or a low-confidence disagreement, becomes
+  `needs-review`; a confident disagreement keeps the model verdict at `low` confidence. The table is in
+  `docs/llm-mode.md`.
+- A heading that names AI now carries its body (the lines below it up to the next heading of the same or higher
+  level, at most 60 lines and 1800 characters), so the rules written under such a heading reach the classifier;
+  a heading is never sent alone.
+- Policy-named documents are discovered: files whose name contains `policy` or `policies` (for example
+  `Documentation/CodePolicy.md`) in the root, `.github`, `docs`, `doc`, `Documentation` or `policies` are
+  extra candidates, ranked after AI-named files and capped at 3. A repository that keeps its AI clause in such a
+  file is no longer reported as `no-policy-found`.
+- `tests/golden/run_gold.py --classifier claude` measures Claude mode on the gold set, with an on-disk response
+  cache.
+
+### Changed
+
+- The README and `docs/limitations.md` report measured accuracy for both modes on a fresh 60-repository blind
+  set (see "Measured accuracy" in the README); the older blind-set figures are replaced.
+- The GitHub Action stays rules-only: it has no Claude input, so no key is read in a workflow
+  (`docs/action.md`).
+
+### Fixed
+
+- Evidence is unique per (file, line, signal): when two rules cited the same line (for example `disclosure` and the weak `template-ai-prompt`), the report listed it twice. One item stays, the one with the highest confidence, and `evidence (N)` counts the deduplicated list in every format.
+- A pull request template line about not requesting an automated AI review is no longer weak disclosure evidence.
+- A prohibition that only forbids a misuse ("as a substitute for understanding", "instead of reviewing", "without reviewing", "blindly") is a qualified restriction, not a ban; so is a ban in a document that also says AI is "usually fine" (for example `LadybirdBrowser/ladybird` `Documentation/CodePolicy.md`: `restricted`, low confidence, was `banned`).
+
 ## [0.2.0] - 2026-11-22
 
 First public release: a command line tool and a composite GitHub Action that find a repository's AI
@@ -169,4 +210,5 @@ first run; responses are cached under `tests/golden/_cache`, then `--offline` re
 - The GitHub Action runs straight from its own checkout (no install, no download), so `uses: ...@v0.2.0` runs
   the v0.2.0 code.
 
+[0.3.0]: https://github.com/KemalG-u/oss-ai-policy-check/releases/tag/v0.3.0
 [0.2.0]: https://github.com/KemalG-u/oss-ai-policy-check/releases/tag/v0.2.0

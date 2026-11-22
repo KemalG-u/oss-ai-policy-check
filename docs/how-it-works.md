@@ -43,7 +43,9 @@ and one of these holds. Names are compared without case.
 
 Searched locations are the repository root and the trees of `.github`, `docs`, `doc` and `documentation`
 (any depth). `llvm/docs` is a built-in special case for one large monorepo. AI-named files are also taken from
-`policies/` and `contributing/` directories.
+`policies/` and `contributing/` directories. A file whose name contains `policy` or `policies` (for example
+`Documentation/CodePolicy.md`) is read as well, after the AI-named files and at most 3 per repository, unless the
+name is about security, privacy, licences, releases and the like.
 
 Links count too: when a found contribution or agent file links to another file in the same repository, that
 file is read as well, one level deep, if it is a candidate by name or if the link itself is about AI: the link

@@ -667,3 +667,29 @@ class LocalDirectoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PolicyNamedDiscoveryTests(unittest.TestCase):
+    """Offline fixture shaped like LadybirdBrowser/ladybird: the AI clause sits in Documentation/CodePolicy.md,
+    CONTRIBUTING.md only links the Documentation/ tree and the README never mentions AI."""
+
+    FILES = {
+        "CONTRIBUTING.md": b"Read [the documentation](https://github.com/a/b/tree/master/Documentation).\n\n"
+                           b"## Issue policy\n\nFollow the [issue guidelines](ISSUES.md).\n",
+        "README.md": b"A browser.\n",
+        "Documentation/CodePolicy.md": b"# Code policy\n\n## On usage of AI and LLMs\n\n"
+                                       b"Do not use an AI or LLM to generate changes without review.\n",
+        "Documentation/CodingStyle.md": b"Use four spaces.\n",
+        "Documentation/PrivacyPolicy.md": b"We keep nothing.\n",
+        "Documentation/FAQ.md": b"Questions.\n",
+        "Libraries/x/CodePolicy.md": b"vendored\n",
+    }
+
+    def test_policy_named_doc_is_read_and_request_count_stays_small(self):
+        gh = FakeGithub(files=dict(self.FILES))
+        s = fetch_snapshot("a/b", client=gh, org=False)
+        self.assertIn("Documentation/CodePolicy.md", s.documents)
+        self.assertIn("AI or LLM", s.documents["Documentation/CodePolicy.md"])
+        self.assertEqual(sorted(p for _, _, p in gh.raw_requests),
+                         ["CONTRIBUTING.md", "Documentation/CodePolicy.md", "README.md"])
+        self.assertEqual(gh.calls, 3)  # default branch, commit, one recursive tree

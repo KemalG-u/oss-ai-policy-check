@@ -75,8 +75,8 @@ runs:
         IN_FORMAT: ${{ inputs.format }}
         IN_FAIL_ON: ${{ inputs.fail-on }}
         ACTION_PATH: ${{ github.action_path }}
-      # The package is stdlib only and runs straight from the action's own checkout, so `uses: ...@v0.2.0`
-      # runs exactly the v0.2.0 code and nothing is installed or downloaded. `-P` keeps the current
+      # The package is stdlib only and runs straight from the action's own checkout, so `uses: ...@v0.3.0`
+      # runs exactly the v0.3.0 code and nothing is installed or downloaded. `-P` keeps the current
       # directory (the caller's workspace, which a pull request controls) off sys.path; only
       # PYTHONPATH points at the action's `src`. Python 3.11 or newer is required for `-P`.
       run: |
