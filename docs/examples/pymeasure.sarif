@@ -1,0 +1,164 @@
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "oss-ai-policy-check",
+          "version": "0.2.0",
+          "informationUri": "https://github.com/KemalG-u/oss-ai-policy-check",
+          "rules": [
+            {
+              "id": "banned",
+              "name": "Banned",
+              "shortDescription": {
+                "text": "The repository policy says AI contributions are not accepted."
+              },
+              "fullDescription": {
+                "text": "The repository policy says AI contributions are not accepted. Heuristic signal from a quoted line; not legal advice."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "ai-policy"
+                ]
+              }
+            },
+            {
+              "id": "restricted",
+              "name": "Restricted",
+              "shortDescription": {
+                "text": "The repository allows AI use only under conditions."
+              },
+              "fullDescription": {
+                "text": "The repository allows AI use only under conditions. Heuristic signal from a quoted line; not legal advice."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "ai-policy"
+                ]
+              }
+            },
+            {
+              "id": "disclosure-required",
+              "name": "DisclosureRequired",
+              "shortDescription": {
+                "text": "The repository requires AI use to be disclosed or labelled."
+              },
+              "fullDescription": {
+                "text": "The repository requires AI use to be disclosed or labelled. Heuristic signal from a quoted line; not legal advice."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": [
+                  "ai-policy"
+                ]
+              }
+            },
+            {
+              "id": "permitted",
+              "name": "Permitted",
+              "shortDescription": {
+                "text": "The repository explicitly accepts AI use."
+              },
+              "fullDescription": {
+                "text": "The repository explicitly accepts AI use. Heuristic signal from a quoted line; not legal advice."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "properties": {
+                "tags": [
+                  "ai-policy"
+                ]
+              }
+            },
+            {
+              "id": "needs-review",
+              "name": "NeedsReview",
+              "shortDescription": {
+                "text": "The repository has AI-policy text the tool cannot decide on; a person must read it."
+              },
+              "fullDescription": {
+                "text": "The repository has AI-policy text the tool cannot decide on; a person must read it. Heuristic signal from a quoted line; not legal advice."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "ai-policy"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "automationDetails": {
+        "id": "oss-ai-policy-check/pymeasure/pymeasure/"
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": []
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "permitted",
+          "ruleIndex": 3,
+          "level": "none",
+          "message": {
+            "text": "AI policy signal 'permitted': All contributions (human or AI-assisted) must:"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "docs/dev/contribute.rst",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 119,
+                  "snippet": {
+                    "text": "All contributions (human or AI-assisted) must:"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "policyEvidence/v1": "d0d80c602faccabd39059e9587d49e29daaa0a7045635aa631a004a741e7e77a"
+          },
+          "properties": {
+            "confidence": "high",
+            "permalink": "https://github.com/pymeasure/pymeasure/blob/02da8edb7d7a22d3662911f842dfe4c433631b4c/docs/dev/contribute.rst#L119"
+          }
+        }
+      ],
+      "properties": {
+        "verdict": "permitted",
+        "confidence": "low",
+        "reviewReason": null,
+        "complete": true,
+        "unclassifiedAiLines": 2,
+        "disclaimer": "Signals are heuristic, not legal advice and never permission. 'no-policy-found' does not mean AI use is allowed."
+      },
+      "versionControlProvenance": [
+        {
+          "repositoryUri": "https://github.com/pymeasure/pymeasure",
+          "revisionId": "02da8edb7d7a22d3662911f842dfe4c433631b4c",
+          "branch": "02da8edb7d7a22d3662911f842dfe4c433631b4c"
+        }
+      ]
+    }
+  ]
+}

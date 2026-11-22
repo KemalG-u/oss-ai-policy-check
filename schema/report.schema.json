@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/oss-ai-policy-check/schema/report.schema.json",
+  "title": "oss-ai-policy-check report, schema_version 2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "repo", "ref", "commit_sha", "org_commit_sha", "verdict", "confidence", "review_reason",
+               "complete", "evidence", "unclassified_ai_lines", "files_checked", "warnings", "tool"],
+  "properties": {
+    "schema_version": {"const": "2"},
+    "repo": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+    "ref": {"type": ["string", "null"]},
+    "commit_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+    "org_commit_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+    "verdict": {"enum": ["banned", "restricted", "disclosure-required", "needs-review", "permitted", "no-policy-found"]},
+    "confidence": {"enum": ["high", "low"]},
+    "review_reason": {"enum": ["no-rule-decision", "conflicting-signals", null]},
+    "complete": {"type": "boolean"},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+    "unclassified_ai_lines": {"type": "array", "items": {"$ref": "#/$defs/unclassified"}},
+    "files_checked": {"type": "array", "items": {"$ref": "#/$defs/file_checked"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {"name": {"const": "oss-ai-policy-check"}, "version": {"type": "string"}}
+    }
+  },
+  "$defs": {
+    "quote": {"type": "string", "maxLength": 300, "pattern": "^(\\S+(\\s+\\S+){0,14})?$"},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "url", "signal", "confidence", "quote"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "url": {"type": ["string", "null"], "pattern": "^https://github\\.com/.+/blob/[0-9a-f]{40}/.+#L[0-9]+$"},
+        "signal": {"enum": ["banned", "restricted", "disclosure-required", "permitted", "needs-review"]},
+        "confidence": {"enum": ["high", "low"]},
+        "quote": {"$ref": "#/$defs/quote"}
+      }
+    },
+    "unclassified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "quote"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "quote": {"$ref": "#/$defs/quote"}
+      }
+    },
+    "file_checked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "status": {"enum": ["read", "missing", "error"]}
+      }
+    }
+  }
+}

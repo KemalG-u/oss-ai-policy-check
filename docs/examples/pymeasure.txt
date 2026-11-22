@@ -1,0 +1,15 @@
+VERDICT permitted - pymeasure/pymeasure @ 02da8edb7d7a22d3662911f842dfe4c433631b4c (02da8edb7d7a)
+confidence: low
+read status: complete within scope
+evidence (1):
+  permitted (high): docs/dev/contribute.rst:119 - All contributions (human or AI-assisted) must:
+    https://github.com/pymeasure/pymeasure/blob/02da8edb7d7a22d3662911f842dfe4c433631b4c/docs/dev/contribute.rst#L119
+AI mentions without a classified rule (2):
+  AGENTS.md:3 - This file provides guidance to agents when working with code in this repository.
+  docs/dev/contribute.rst:128 - **For AI-assisted contributions:**
+files checked: 4 read, 0 missing, 0 error
+LIMIT: The owner's .github repository is read unless the repository itself states an AI policy (an AI-policy-named file, or a paragraph pairing an AI term with a policy verb); its CONTRIBUTING and AI policy files are read even when the repository has its own CONTRIBUTING, and the repository text wins at that gate only.
+LIMIT: At most 8 AI-named files beyond the standard candidates are read per repository; the rest are listed in the warnings.
+LIMIT: Arbitrary external policy websites and source subprojects are not scanned.
+LIMIT: 'complete' covers successful reads within the stated scope, not exhaustive policy discovery.
+Signals are heuristic, not legal advice and never permission. 'no-policy-found' does not mean AI use is allowed.

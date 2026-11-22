@@ -1,0 +1,184 @@
+name: "oss-ai-policy-check"
+description: "Find a repo's AI contribution policy, link each line at a pinned commit, and say needs-review when unsure. Read-only."
+author: "oss-ai-policy-check"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  repo:
+    description: "OWNER/REPO whose AI contribution policy is read."
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: "Branch, tag or commit SHA to read (default: the default branch). Cannot be combined with `path`."
+    required: false
+    default: ""
+  path:
+    description: "Directory with a local checkout of `repo`, read instead of GitHub. Cannot be combined with `ref`."
+    required: false
+    default: ""
+  format:
+    description: "Format of the report file: text, json, markdown or sarif. The job summary is always markdown and the JSON report is always written."
+    required: false
+    default: "markdown"
+  fail-on:
+    description: "Fail the step when the verdict is at least this strict: banned, restricted, disclosure-required or needs-review. Empty means report only; the step then fails only when the policy could not be read (exit 2 or 3)."
+    required: false
+    default: ""
+  upload-sarif:
+    description: "With format `sarif`: upload the report to code scanning (needs `security-events: write`). Optional, off by default."
+    required: false
+    default: "false"
+  github-token:
+    description: "Token used to read the repository. The default token reads public repositories."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  verdict:
+    description: "banned, restricted, disclosure-required, needs-review, permitted or no-policy-found."
+    value: ${{ steps.check.outputs.verdict }}
+  complete:
+    description: "`false` when some candidate file could not be read; then `no-policy-found` and `permitted` are not a decision."
+    value: ${{ steps.check.outputs.complete }}
+  json-file:
+    description: "Path of the JSON report (schema_version 2)."
+    value: ${{ steps.check.outputs.json-file }}
+  report-file:
+    description: "Path of the report in the requested `format`."
+    value: ${{ steps.check.outputs.report-file }}
+  sarif-file:
+    description: "Path of the SARIF report; empty unless `format` is sarif."
+    value: ${{ steps.check.outputs.sarif-file }}
+  exit-code:
+    description: "Exit code the CLI would return (docs/schema.md): 0, 10, 11, 12, 20, 3, or 2 on a usage or read error."
+    value: ${{ steps.check.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.13"
+
+    - name: Read the AI policy
+      id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        IN_REPO: ${{ inputs.repo }}
+        IN_REF: ${{ inputs.ref }}
+        IN_PATH: ${{ inputs.path }}
+        IN_FORMAT: ${{ inputs.format }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        ACTION_PATH: ${{ github.action_path }}
+      # The package is stdlib only and runs straight from the action's own checkout, so `uses: ...@v0.2.0`
+      # runs exactly the v0.2.0 code and nothing is installed or downloaded. `-P` keeps the current
+      # directory (the caller's workspace, which a pull request controls) off sys.path; only
+      # PYTHONPATH points at the action's `src`. Python 3.11 or newer is required for `-P`.
+      run: |
+        PYTHONPATH="${ACTION_PATH}/src" python -P -X utf8 -B - <<'PY'
+        import os
+        import secrets
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        from oss_ai_policy_check.cli import analyze
+        from oss_ai_policy_check.contract import (EXIT_INCOMPLETE, EXIT_USAGE, FAIL_ON_CHOICES, FORMATS,
+                                                  exit_code)
+        from oss_ai_policy_check.fetch import FetchError, check_repo
+        from oss_ai_policy_check.report import render
+
+        env = os.environ
+        gh_output = env.get("GITHUB_OUTPUT")
+
+
+        def emit(name, value):
+            line = f"{name}={value}\n"
+            if gh_output:
+                with open(gh_output, "a", encoding="utf-8") as handle:
+                    handle.write(line)
+            else:
+                sys.stdout.write(line)
+
+
+        def fail(message):
+            print("::error::" + " ".join(str(message).split()))
+            emit("exit-code", EXIT_USAGE)
+            emit("enforce-code", EXIT_USAGE)
+            sys.exit(0)
+
+
+        repo = env.get("IN_REPO", "").strip()
+        ref = env.get("IN_REF", "").strip() or None
+        path = env.get("IN_PATH", "").strip() or None
+        fmt = env.get("IN_FORMAT", "").strip() or "markdown"
+        fail_on = env.get("IN_FAIL_ON", "").strip() or None
+
+        if fmt not in FORMATS:
+            fail(f"format must be one of: {', '.join(FORMATS)}")
+        if fail_on is not None and fail_on not in FAIL_ON_CHOICES:
+            fail(f"fail-on must be one of: {', '.join(FAIL_ON_CHOICES)}")
+        if path and ref:
+            fail("ref cannot be combined with path")
+        try:
+            check_repo(repo)
+            report = analyze(repo, ref, path)
+            documents = {name: render(report, name) for name in dict.fromkeys(("json", "markdown", "text", fmt))}
+        except (ValueError, NotImplementedError, FetchError) as exc:
+            fail(str(exc))
+
+        out_dir = Path(env.get("RUNNER_TEMP") or tempfile.gettempdir()) / "oss-ai-policy-check"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        suffix = {"json": "json", "markdown": "md", "text": "txt", "sarif": "sarif"}
+        files = {}
+        for name in ("json", fmt):
+            target = out_dir / f"report.{suffix[name]}"
+            target.write_text(documents[name], encoding="utf-8", newline="\n")
+            files[name] = target
+
+        summary = env.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a", encoding="utf-8") as handle:
+                handle.write(documents["markdown"].rstrip("\n") + "\n")
+
+        # The text report quotes repository files, so a line could be read as a workflow command.
+        # Commands are switched off with a random token for the length of the report.
+        token = secrets.token_hex(16)
+        print(f"::stop-commands::{token}")
+        sys.stdout.write(documents["text"])
+        print(f"::{token}::")
+
+        code = exit_code(report["verdict"], report["complete"], fail_on)
+        # Without fail-on the action only reports, except that an incomplete read (exit 3: nothing could
+        # be decided) always fails the step, as does an unreadable policy source.
+        enforce = code if (fail_on or code == EXIT_INCOMPLETE) else 0
+        emit("verdict", report["verdict"])
+        emit("complete", str(report["complete"]).lower())
+        emit("json-file", files["json"])
+        emit("report-file", files[fmt])
+        emit("sarif-file", files["sarif"] if fmt == "sarif" else "")
+        emit("exit-code", code)
+        emit("enforce-code", enforce)
+        PY
+
+    - name: Upload SARIF to code scanning
+      if: inputs.upload-sarif == 'true' && inputs.format == 'sarif' && steps.check.outputs.sarif-file != ''
+      uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+      with:
+        sarif_file: ${{ steps.check.outputs.sarif-file }}
+        category: oss-ai-policy-check
+
+    - name: Apply fail-on
+      if: steps.check.outputs.enforce-code != '0'
+      shell: bash
+      env:
+        ENFORCE_CODE: ${{ steps.check.outputs.enforce-code }}
+        VERDICT: ${{ steps.check.outputs.verdict }}
+      run: |
+        echo "::error::oss-ai-policy-check: verdict '${VERDICT:-unavailable}' (exit code ${ENFORCE_CODE})"
+        exit "${ENFORCE_CODE}"

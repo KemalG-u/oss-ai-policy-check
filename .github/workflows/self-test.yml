@@ -1,0 +1,57 @@
+name: self-test
+
+# Runs the action from this very checkout (`uses: ./`) against a real public repository.
+# It needs the network, so it is separate from the offline unit tests in ci.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - action.yml
+      - src/**
+      - pyproject.toml
+      - .github/workflows/self-test.yml
+  pull_request:
+    paths:
+      - action.yml
+      - src/**
+      - pyproject.toml
+      - .github/workflows/self-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the action on pymeasure/pymeasure
+        id: policy
+        uses: ./
+        with:
+          repo: pymeasure/pymeasure
+          fail-on: ""
+
+      - name: Check the outputs
+        env:
+          VERDICT: ${{ steps.policy.outputs.verdict }}
+          COMPLETE: ${{ steps.policy.outputs.complete }}
+          JSON_FILE: ${{ steps.policy.outputs.json-file }}
+        run: |
+          echo "verdict=${VERDICT} complete=${COMPLETE}"
+          case "${VERDICT}" in
+            banned|restricted|disclosure-required|needs-review|permitted|no-policy-found) ;;
+            *) echo "::error::unexpected verdict '${VERDICT}'"; exit 1 ;;
+          esac
+          case "${COMPLETE}" in
+            true|false) ;;
+            *) echo "::error::unexpected complete '${COMPLETE}'"; exit 1 ;;
+          esac
+          test -s "${JSON_FILE}"

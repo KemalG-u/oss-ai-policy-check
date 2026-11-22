@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oss-ai-policy-check"
+dynamic = ["version"]
+description = "Find a repository's AI contribution policy and link every cited line at a pinned commit SHA; says needs-review when unsure."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "THIRD-PARTY-NOTICES.md"]
+keywords = ["ai", "policy", "contributing", "github", "open-source"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/KemalG-u/oss-ai-policy-check"
+Changelog = "https://github.com/KemalG-u/oss-ai-policy-check/blob/main/CHANGELOG.md"
+Issues = "https://github.com/KemalG-u/oss-ai-policy-check/issues"
+
+[project.scripts]
+oss-ai-policy-check = "oss_ai_policy_check.cli:main"
+
+[tool.hatch.version]
+path = "src/oss_ai_policy_check/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oss_ai_policy_check"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"schema/report.schema.json" = "oss_ai_policy_check/schema/report.schema.json"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "schema", "docs", "LICENSE", "THIRD-PARTY-NOTICES.md", "README.md", "CONTRIBUTING-DEV.md"]
+exclude = ["tests/golden/_cache", "**/__pycache__"]

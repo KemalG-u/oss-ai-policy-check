@@ -1,0 +1,14 @@
+{
+  "_note": "Org .github repository HEADs at the gold scan date (2026-11-22), so the owner-level read is pinned like the repository itself. Source: the gold labelling scan.",
+  "RustPython": "207549dc7db5d46a81ee09224a50d99a7e462f50",
+  "astral-sh": "7f9c1e0b3c80694df3acb9b030bb04085bb8a139",
+  "expressjs": "a0e05d5e690aa80f92c61ce2d72f8de42fc93dfe",
+  "facebook": "8d5c7eb12f13fb13e2dd471e5cbe1fdcc2e22e17",
+  "laravel": "eea7f59599a45c7e78e50b846e0ea19b9e92d818",
+  "mastodon": "c4a3187f2bfcb7a8a03e835f860ca8df0d82337f",
+  "openedx": "209d4f573417b97dd8dda1e6ec98c36618f1f607",
+  "pallets": "06702680f531ba49dc901b584479048ab55724f1",
+  "sharkdp": "815946108495d2ccfd8812ce38471b4ff15f4790",
+  "symfony": "bbfd8014dde6c5ab00c9d276b469a8d2db60bf79",
+  "twbs": "4c560f377b5a3da0d6606754473b6a9c1d099fe1"
+}
