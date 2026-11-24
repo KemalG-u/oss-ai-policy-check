@@ -159,11 +159,15 @@ whose figures are optimistic because the rules were tuned on it (see [docs/limit
 
 | | correct | decided rows correct | `needs-review` | policy missed | Wilson 95% interval (correct) |
 |---|---|---|---|---|---|
-| Rules only (default) | 42 of 60 (70.0%) | 42 of 53 | 7 | 3 | 57% - 80% |
+| Rules only (default) | 42 of 60 (70.0%) | 42 of 53 | 7 | 2 | 57% - 80% |
 | Claude mode (`--classifier claude`) | 55 of 60 (91.7%) | 55 of 56 | 4 | 1 | 82% - 96% |
 
 "Decided rows" are the rows where the tool gave a class instead of abstaining. "Policy missed" is a repository
 that has an AI policy but got `no-policy-found`.
+
+When the rows were measured: the rules row was first run on 2026-11-22 and run again on 2026-11-24 with v0.3.0 from
+the pinned SHAs, with the same 42 of 60 (v0.2.0 gives the same verdict on every one of the 60 rows). The Claude mode
+row was measured once with v0.3.0 on 2026-11-22; it has not been re-run.
 
 Caveats, all of which matter:
 
