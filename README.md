@@ -1,3 +1,5 @@
+> **Status: active, v0.3.0 (pre-1.0).** Interfaces may change.
+
 # oss-ai-policy-check
 
 Finds a repository's AI contribution policy and links every line it cites at a fixed commit, so you can check
@@ -150,6 +152,10 @@ the action. Inputs, outputs, permissions and more examples are in [docs/action.m
 Both modes were run once on a 60-repository set that had never been used to write or tune a rule or the prompt
 (called gold4 here). Labels are one person's reading of the written rubric (`tests/golden/RUBRIC.md`), pinned to
 commit SHAs. "Correct" means the verdict equals the label; a `needs-review` answer counts as not correct.
+The gold4 label file is a separate blind set and is not part of this repository, so these two rows cannot be rerun
+from here. The same runner is included: `python tests/golden/run_gold.py --split all --summary` (add
+`--classifier claude` for Claude mode) runs the published 151-row development set `tests/golden/gold.jsonl`,
+whose figures are optimistic because the rules were tuned on it (see [docs/limitations.md](docs/limitations.md)).
 
 | | correct | decided rows correct | `needs-review` | policy missed | Wilson 95% interval (correct) |
 |---|---|---|---|---|---|
