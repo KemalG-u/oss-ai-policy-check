@@ -9,6 +9,7 @@ from pathlib import Path
 import _support
 from _fakes import SHA, FakeGithub
 from oss_ai_policy_check import cli
+from oss_ai_policy_check.classify import classify_documents
 from oss_ai_policy_check.fetch import FetchError, RateLimitedError
 
 _SPEC = importlib.util.spec_from_file_location("build_index", _support.ROOT / "scripts" / "build_index.py")
@@ -97,6 +98,95 @@ class DecisionTests(unittest.TestCase):
     def test_summarize_counts_every_category(self):
         counts = build_index.summarize([entry("a/1", "banned"), entry("a/2"), entry("a/3"), entry("a/4", "unreadable")])
         self.assertEqual((counts["banned"], counts["no-policy-found"], counts["unreadable"], counts["permitted"]), (1, 2, 1, 0))
+
+
+def report_for(repo_row):
+    """A report shaped like cli.analyze's, built from a golden excerpt by the real classifier."""
+    result = classify_documents(repo_row["documents"], owner=repo_row["repo"].split("/")[0])
+    evidence = [{**e, "url": f"https://github.com/{repo_row['repo']}/blob/{repo_row['commit_sha']}/{e['file']}#L{e['line']}"}
+                for e in result["evidence"]]
+    return {"verdict": result["verdict"], "confidence": result["confidence"], "evidence": evidence,
+            "review_reason": result["review_reason"], "complete": True, "commit_sha": repo_row["commit_sha"], "warnings": []}
+
+
+GOLDEN = {row["id"]: row for row in json.loads((_support.ROOT / "tests" / "golden" / "agent_file_cases.json")
+                                               .read_text(encoding="utf-8"))}
+
+
+class PublicationRuleTests(unittest.TestCase):
+    """A weak banned/restricted read is never shown under that name: it is `possible`, with its quote."""
+
+    def test_headline_needs_high_confidence_and_a_policy_file(self):
+        h = build_index.headline_category
+        self.assertEqual(h("banned", "high", "CONTRIBUTING.md"), "banned")
+        self.assertEqual(h("restricted", "high", "org:.github/AI_POLICY.md"), "restricted")
+        self.assertEqual(h("restricted", "high", "AGENTS.md"), "restricted")
+        self.assertEqual(h("banned", "high", ".github/PULL_REQUEST_TEMPLATE.md"), "banned")
+        self.assertEqual(h("banned", "low", "CONTRIBUTING.md"), "possible")
+        self.assertEqual(h("restricted", "low", "AGENTS.md"), "possible")
+        self.assertEqual(h("restricted", "high", "README.md"), "possible")
+        self.assertEqual(h("restricted", "high", "docs/providers/vercel-ai-gateway.md"), "possible")
+        self.assertEqual(h("banned", "high", None), "possible")
+        for other in ("disclosure-required", "needs-review", "permitted", "no-policy-found"):
+            self.assertEqual(h(other, "low", "README.md"), other)
+
+    def test_entry_keeps_the_rules_verdict_but_counts_a_weak_ban_as_possible(self):
+        # a single, unambiguous ban sentence is one deciding sentence: confidence low
+        row = GOLDEN["alacritty-ban"]
+        report = report_for(row)
+        self.assertEqual((report["verdict"], report["confidence"]), ("banned", "low"))
+        e = build_index.entry_from_report({"repo": row["repo"], "stars": 1, "language": "Rust"}, report)
+        self.assertEqual((e["category"], e["verdict"], e["confidence"]), ("possible", "banned", "low"))
+        self.assertIn("large language models", e["evidence_quote"])
+
+    def test_firm_ban_stays_banned(self):
+        row = GOLDEN["yt-dlp-ban"]
+        report = report_for(row)
+        self.assertEqual((report["verdict"], report["confidence"]), ("banned", "high"))
+        e = build_index.entry_from_report({"repo": row["repo"], "stars": 1, "language": "Python"}, report)
+        self.assertEqual(e["category"], "banned")
+
+    def test_real_bans_are_not_lost_and_wrong_ones_are_not_banned(self):
+        # the rows of the 25 Nov 2026 index: the six real bans stay listed (banned or possible, never silent), the
+        # wrong ones are neither banned nor possible-banned
+        for cid in ("yt-dlp-ban", "free-for-dev-ban", "alacritty-ban", "meilisearch-ban", "typst-ban", "seclists-ban"):
+            row = GOLDEN[cid]
+            e = build_index.entry_from_report({"repo": row["repo"], "stars": 1, "language": "x"}, report_for(row))
+            self.assertIn(e["category"], ("banned", "possible"), cid)
+            self.assertEqual(e["verdict"], "banned", cid)
+            self.assertTrue(e["evidence_quote"], cid)
+        row = GOLDEN["diagram-design-version-bump"]  # no AI rule at all
+        e = build_index.entry_from_report({"repo": row["repo"], "stars": 1, "language": "x"}, report_for(row))
+        self.assertNotIn(e["category"], ("banned", "restricted", "possible"))
+        row = GOLDEN["rxjava-fire-and-forget"]  # a disclosure duty, not a ban
+        e = build_index.entry_from_report({"repo": row["repo"], "stars": 1, "language": "x"}, report_for(row))
+        self.assertNotEqual((e["verdict"], e["category"]), ("banned", "banned"))
+        self.assertNotEqual(e["verdict"], "banned")
+
+    def test_evidence_line_prefers_a_line_that_names_ai(self):
+        row = GOLDEN["microsoft-terminal-ai-policy"]
+        e = build_index.entry_from_report({"repo": row["repo"], "stars": 1, "language": "C++"}, report_for(row))
+        self.assertEqual(e["verdict"], "restricted")
+        self.assertIn("AI", e["evidence_quote"])
+        self.assertNotEqual(e["evidence_quote"], "Banned:")
+        self.assertEqual(e["category"], "possible")
+
+    def test_counts_and_readme_list_possible_separately_with_its_quote(self):
+        doc = document([
+            entry("a/firm", "banned", confidence="high", source_file="CONTRIBUTING.md", evidence_line=4,
+                  evidence_quote="No AI for patches.", evidence_url="https://x/firm#L4"),
+            entry("a/weak", "possible", verdict="banned", confidence="low", source_file="CONTRIBUTING.md", evidence_line=9,
+                  evidence_quote="Contributions must not include LLM content.", evidence_url="https://x/weak#L9")])
+        self.assertEqual((doc["counts"]["banned"], doc["counts"]["possible"]), (1, 1))
+        text = build_index.render_readme(doc, None)
+        self.assertIn("| `banned` | 1 |", text)
+        self.assertIn("| `possible` | 1 |", text)
+        banned_part, possible_part = text.split("### `possible` - needs review (1)")
+        self.assertIn("a/firm", banned_part)
+        self.assertNotIn("a/weak", banned_part)
+        self.assertIn("a/weak", possible_part)
+        self.assertIn("rules read: `banned`", possible_part)
+        self.assertIn("must not include LLM content", possible_part)
 
 
 class ScanTests(unittest.TestCase):

@@ -196,7 +196,8 @@ public repositories that pushed in the last 30 days, and commits the result as o
 has the counts per class, the repositories that changed class since the previous run and the cited lines;
 [`index/latest.json`](index/latest.json) has the decision, quoted line, source file and commit SHA of every repository;
 [`index/history/`](index/history) keeps one snapshot per run. The selection criteria are in
-[`index/config.json`](index/config.json). It is a hint with the accuracy measured above, not a ruling; a wrong row is
+[`index/config.json`](index/config.json). `banned` and `restricted` are shown only for a firm read; a weaker one is listed as `possible` (needs review) with
+its quote. It is a hint with the accuracy measured above, not a ruling; a wrong row is
 an [issue](https://github.com/KemalG-u/oss-ai-policy-check/issues). The builder is `scripts/build_index.py` (not part
 of the installed package).
 

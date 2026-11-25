@@ -31,15 +31,29 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 from oss_ai_policy_check import __version__, cli  # noqa: E402
-from oss_ai_policy_check.contract import (BANNED, DISCLOSURE_REQUIRED, NEEDS_REVIEW, NO_POLICY_FOUND,  # noqa: E402
-                                          PERMITTED, RESTRICTED)
+from oss_ai_policy_check.classify import compile_ai_term, load_patterns  # noqa: E402
+from oss_ai_policy_check.contract import (BANNED, DISCLOSURE_REQUIRED, HIGH, NEEDS_REVIEW,  # noqa: E402
+                                          NO_POLICY_FOUND, PERMITTED, RESTRICTED)
 from oss_ai_policy_check.fetch import FetchError, RateLimitedError, RestTransport, github_token  # noqa: E402
 from oss_ai_policy_check.report import _clean, _md  # noqa: E402
 
 SCHEMA_VERSION = "1"
 UNREADABLE = "unreadable"  # not a verdict: files could not be read and nothing restrictive was seen
-CATEGORIES = (BANNED, RESTRICTED, DISCLOSURE_REQUIRED, NEEDS_REVIEW, PERMITTED, NO_POLICY_FOUND, UNREADABLE)
-LISTED = (BANNED, RESTRICTED, DISCLOSURE_REQUIRED, NEEDS_REVIEW, PERMITTED)  # listed one by one in the README
+# Publication rule: a public index must not call another project's policy "banned" or "restricted" on a weak read.
+# A rules verdict of banned/restricted counts under that name only when it is firm (high confidence: two or more
+# deciding sentences, none of them hedged) and its cited line sits in a file that states contribution rules.
+# Anything else is listed as `possible`, with its quote, for a person to read; the classifier's own verdict stays
+# in the entry's `verdict` field.
+POSSIBLE = "possible"
+HEADLINE = (BANNED, RESTRICTED)
+CATEGORIES = (BANNED, RESTRICTED, POSSIBLE, DISCLOSURE_REQUIRED, NEEDS_REVIEW, PERMITTED, NO_POLICY_FOUND, UNREADABLE)
+LISTED = (BANNED, RESTRICTED, POSSIBLE, DISCLOSURE_REQUIRED, NEEDS_REVIEW, PERMITTED)  # listed one by one in the README
+# Files that state contribution or agent rules. A README, a documentation page or a provider guide that mentions AI
+# is usually describing a product, not setting a rule for contributors.
+POLICY_FILE = re.compile(
+    r"contribut|(?:^|[_\-. ])ai[_\-. ]?(?:polic|use|usage|rules|guid|assist)|polic|agents?\.md$|claude\.md$|gemini\.md$|"
+    r"copilot-instructions|\.cursorrules|\.cursor/rules|pull[_\-]request[_\-]template|issue[_\-]template|"
+    r"code[_\-]of[_\-]conduct|governance|hacking|development\.md$|developing\.md$", re.I)
 ISSUES_URL = "https://github.com/KemalG-u/oss-ai-policy-check/issues"
 NO_CAP = 10 ** 9
 
@@ -111,11 +125,22 @@ def select_repos(search: Callable[[str, int], dict[str, Any]], selection: dict[s
 
 # ------------------------------------------------------------------ one repository
 
+_AI = compile_ai_term(load_patterns())
+
+
 def best_evidence(evidence: list[dict[str, Any]], verdict: str) -> dict[str, Any] | None:
-    """The line to show for a decision: a high-confidence line of the verdict's own signal first."""
+    """The line to show for a decision: a high-confidence line of the verdict's own signal first, and among equals a
+    line that names AI itself (a label such as "Banned:" or a sentence about localisation files says nothing)."""
     own = [item for item in evidence if item["signal"] == verdict] or list(evidence)
-    own.sort(key=lambda item: item.get("confidence") != "high")  # stable: report order inside a group
+    own.sort(key=lambda item: (item.get("confidence") != "high", not _AI.search(item.get("quote") or "")))
     return own[0] if own else None
+
+
+def headline_category(verdict: str, confidence: str | None, source_file: str | None) -> str:
+    """The class an entry is counted under: the verdict, except that a weak banned/restricted read is `possible`."""
+    if verdict in HEADLINE and not (confidence == HIGH and source_file and POLICY_FILE.search(source_file)):
+        return POSSIBLE
+    return verdict
 
 
 def entry_from_report(info: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +148,8 @@ def entry_from_report(info: dict[str, Any], report: dict[str, Any]) -> dict[str,
     line = best_evidence(report["evidence"], verdict)
     return {
         "repo": info["repo"], "stars": info["stars"], "language": info["language"], "status": "ok",
-        "category": UNREADABLE if (not complete and verdict == NO_POLICY_FOUND) else verdict,
+        "category": (UNREADABLE if (not complete and verdict == NO_POLICY_FOUND)
+                     else headline_category(verdict, report["confidence"], line["file"] if line else None)),
         "verdict": verdict, "confidence": report["confidence"], "review_reason": report["review_reason"],
         "complete": complete, "commit_sha": report["commit_sha"],
         "source_file": line["file"] if line else None, "evidence_line": line["line"] if line else None,
@@ -228,8 +254,9 @@ def load_previous(history_dir: Path, today: str) -> dict[str, Any] | None:
     return json.loads((history_dir / names[-1]).read_text(encoding="utf-8")) if names else None
 
 
-_MEANING = {BANNED: "a quoted line says AI-assisted work is refused",
-            RESTRICTED: "AI use is conditional (human in the loop, limits on scope)",
+_MEANING = {BANNED: "a quoted line says AI-assisted work is refused (firm: two or more deciding sentences, in a contribution or agent file)",
+            RESTRICTED: "AI use is conditional (human in the loop, limits on scope; firm, as for `banned`)",
+            POSSIBLE: "the rules read a ban or a restriction but not firmly (one deciding sentence, a hedged one, or a line outside the contribution files); read the quote, it is not counted as banned or restricted",
             DISCLOSURE_REQUIRED: "AI use has to be disclosed or labelled",
             NEEDS_REVIEW: "AI-policy text the tool could not decide on; a person must read it",
             PERMITTED: "an explicit welcome statement",
@@ -241,7 +268,8 @@ def _row(entry: dict[str, Any]) -> str:
     where = f"{_md(entry['source_file'])}:{entry['evidence_line']}"
     cell = f"[{where}]({entry['evidence_url']})" if entry["evidence_url"] else where
     quote_text = f" {_md(entry['evidence_quote'])}" if entry["evidence_quote"] else ""
-    return f"| {_md(entry['repo'])} | {entry['stars']} | {entry['confidence']} | {cell}{quote_text} |"
+    seen = f"{entry['confidence']}, rules read: `{entry['verdict']}`" if entry["category"] == POSSIBLE else entry["confidence"]
+    return f"| {_md(entry['repo'])} | {entry['stars']} | {seen} | {cell}{quote_text} |"
 
 
 def render_readme(doc: dict[str, Any], diff: dict[str, Any] | None) -> str:
@@ -255,7 +283,9 @@ def render_readme(doc: dict[str, Any], diff: dict[str, Any] | None) -> str:
              f"[oss-ai-policy-check](https://github.com/KemalG-u/oss-ai-policy-check) {doc['tool']['version']}: "
              "fixed rules, no language model. Measured accuracy is 70% (42 of 60 repositories, see "
              "[Measured accuracy](../README.md#measured-accuracy)). A class is a hint that points you at the cited "
-             f"line, not a ruling: read the line. If a row is wrong, [open an issue]({ISSUES_URL}).", "",
+             "line, not a ruling: read the line. `banned` and `restricted` are shown only for a firm read; a weaker "
+             "one is listed as `possible` (needs review) with its quote. "
+             f"If a row is wrong, [open an issue]({ISSUES_URL}).", "",
              "## Counts", "", "| class | repositories | meaning |", "|---|---:|---|"]
     lines += [f"| `{name}` | {counts[name]} | {_MEANING[name]} |" for name in CATEGORIES]
     cap = f"at most {facts['max_per_language']} per language, " if facts["max_per_language"] else ""
@@ -282,7 +312,8 @@ def render_readme(doc: dict[str, Any], diff: dict[str, Any] | None) -> str:
     for name in LISTED:
         rows = [entry for entry in doc["repos"] if entry["category"] == name]
         if rows:
-            lines += [f"### `{name}` ({len(rows)})", "", "| repository | stars | confidence | line |",
+            title = f"`{name}` - needs review" if name == POSSIBLE else f"`{name}`"
+            lines += [f"### {title} ({len(rows)})", "", "| repository | stars | confidence | line |",
                       "|---|---:|---|---|"] + [_row(entry) for entry in rows] + [""]
     lines += ["## Data", "",
               "- [`latest.json`](latest.json): every repository with its decision, quoted line, source file and commit SHA.",
