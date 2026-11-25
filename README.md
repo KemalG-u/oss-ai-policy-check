@@ -166,7 +166,7 @@ whose figures are optimistic because the rules were tuned on it (see [docs/limit
 that has an AI policy but got `no-policy-found`.
 
 When the rows were measured: the rules row was first run on 2026-11-22 and run again on 2026-11-24 with v0.3.0 and on 2026-11-25 with the rules of this repository after the
-`agent-file-no-posting` fix, each from the pinned SHAs, with the same 42 of 60 (v0.2.0 gives the same verdict on every one of the 60 rows). The Claude mode
+`agent-file-no-posting` fix and again the same day after the agent-instruction-file change, each from the pinned SHAs, with the same 42 of 60 (v0.2.0 gives the same verdict on every one of the 60 rows). The Claude mode
 row was measured once with v0.3.0 on 2026-11-22; it has not been re-run.
 
 Caveats, all of which matter:

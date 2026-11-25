@@ -58,6 +58,16 @@ permission to contribute with AI. The text of the policy itself is what counts.
   AI-policy text only when it also speaks about contributing (contribution, pull request, patch, commit,
   issue, disclosure, "AI policy"), because those files mostly describe a product or give commands to a tool.
   A policy written there without those words is not flagged.
+- **Agent instruction files are read for contributor rules only.** A rule reads an `AGENTS.md`, `CLAUDE.md`,
+  `GEMINI.md` or Copilot/Cursor instructions file only in a paragraph that names contributing, and the loose
+  rules (`disclosure`, `ai-voice-ban`) ask for more there, because those files are mostly operating procedure for
+  the agent (see [how it works](how-it-works.md)). The price: a restriction written there in words that never
+  mention contributing, a commit, an issue or a pull request is missed. Two checks on 25 Nov 2026: 7 of 16
+  repositories of one pool had been reported as `restricted`/`banned` for such files and other loose matches;
+  after the change none is, and 129 of 151 development rows and 42 of 60 gold4 rows still get the labelled verdict.
+  Pages of a repository's own documentation that the file discovery picks up by name (an `llm-review-policy.md`
+  about the project's experiments, a compliance note about the EU AI Act) can still produce a `disclosure-required`
+  or `needs-review` that is no policy of the repository.
 
 ## Coverage
 
