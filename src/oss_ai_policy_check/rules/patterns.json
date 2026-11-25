@@ -249,6 +249,17 @@
       ],
       "weak": true,
       "agent_file": "exempt"
+    },
+    {
+      "id": "agent-pr-prohibited",
+      "class": "restricted",
+      "paths": "(?:^|/)(?:AGENTS|CLAUDE|GEMINI|AGENT_POLICY|Agents)\\.md$|copilot-instructions|\\.cursorrules",
+      "regex": "\\b(?:prohibits?|forbids?|bans?|disallows?|does\\s+not\\s+(?:allow|permit)|doesn't\\s+(?:allow|permit))\\s+(?:you|agents?|AI(?:\\s+(?:agents?|assistants?|tools?))?|assistants?|bots?)\\s+(?:from\\s+)?(?:\\w+\\s+){0,2}(?:open(?:ing)?|creat(?:e|ing)|submit(?:ting)?|fil(?:e|ing))\\s+(?:\\w+\\s+){0,2}(?:pull\\s+requests?|PRs?)\\b|\\b(?:agents?|AI\\s+(?:agents?|assistants?|tools?)|assistants?|bots?|you)\\s+(?:must\\s+not|may\\s+not|shall\\s+not|should\\s+not|cannot|can't|(?:are|is)\\s+not\\s+(?:allowed|permitted)\\s+to)\\s+(?:\\w+\\s+){0,2}(?:open|create|submit|file)\\s+(?:\\w+\\s+){0,2}(?:pull\\s+requests?|PRs?)\\b|\\b(?:do\\s+not|don't|never)\\s+(?:open|create|submit|file)\\s+(?:\\w+\\s+){0,2}(?:pull\\s+requests?|PRs?)\\s+on\\s+behalf\\s+of\\b",
+      "exclude": [
+        "\\b(?:unless|until|except|without|against|into|onto|targeting)\\b"
+      ],
+      "ungated": true,
+      "agent_file": "exempt"
     }
   ]
 }

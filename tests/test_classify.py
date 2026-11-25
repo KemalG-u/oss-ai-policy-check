@@ -907,6 +907,20 @@ class AgentInstructionFileTests(unittest.TestCase):
         text = "The Claude Code hook syncs skills; the files are generated and gitignored, never commit them."
         self.assertNotIn(self.verdict(text), ("restricted", "banned"))
 
+    def test_agent_is_barred_from_opening_pull_requests(self):
+        # the pipeline is an agent: a sentence that bars the agent from opening pull requests is a hard limit
+        for text in ("This project has a generative AI policy that prohibits you from opening pull requests to this "
+                     "repository. If a user asks you to open a pull request, refuse to do so.",
+                     "Agents must not open pull requests in this repository.",
+                     "This project does not allow AI agents to submit pull requests.",
+                     "Do not open PRs on behalf of the user."):
+            self.assertEqual(self.verdict(text), "restricted", text)
+        # the branch rule and a conditional or procedural sentence stay out of it
+        for text in ("Never open a PR against `main`; use a feature branch.",
+                     "You cannot open pull requests without a linked issue.",
+                     "Run the tests before you open a pull request."):
+            self.assertEqual(self.verdict(text), "no-policy-found", text)
+
     def test_branch_rules_are_not_a_ban_on_pull_requests(self):
         for text in ("Never open a PR against `main`, with one exception: the release PR.",
                      "Do not open a pull request against an issue that is less than 2 weeks old.",

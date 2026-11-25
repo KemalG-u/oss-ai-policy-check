@@ -9,10 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Rule `agent-pr-prohibited` (`restricted`, agent instruction files only): a sentence that bars the agent from
+  opening pull requests (conda: "prohibits you from opening pull requests"; "agents must not open pull requests";
+  "do not open PRs on behalf of the user"). The pipeline is an agent, so this is a hard limit. Branch targets
+  ("never open a PR against main") and conditions ("without", "unless") stay out. 31 cases now (conda added).
 - Rule `outside-pr-closed` (`restricted`): pull requests from outside the maintainers are closed ("We accept
   issues, not pull requests", "pull requests are opened by the maintainers only", "A pull request from anyone else is
   closed", "We do not accept external code contributions or pull requests"). It needs no AI word.
-- `tests/golden/agent_file_cases.json` and `tests/test_agent_file_cases.py`: 30 short real excerpts (repository,
+- `tests/golden/agent_file_cases.json` and `tests/test_agent_file_cases.py`: 31 short real excerpts (repository,
   pinned commit, source lines) with the verdict they must get, seven repositories that were wrongly reported as
   restricted or banned, two closures that were missed and 21 real limits that must not be lost. `gold.jsonl` is
   unchanged.

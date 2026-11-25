@@ -534,5 +534,22 @@
   "documents": {
    "AGENTS.md": "## Code Contributions\n\n* **No unreviewed automation**: Automated pull requests must not be created without\n  ongoing human oversight. The pull request must be actively maintained by a human\n  contributor who responds to feedback. The AI agent is not permitted to create pull\n  requests, open issues, post comments, respond to reviews, or push commits without\n  ongoing human oversight."
   }
+ },
+ {
+  "id": "conda-agents",
+  "repo": "conda/conda",
+  "commit_sha": "e18859f649388155c1d73c53abbc8a9df84b31cd",
+  "kind": "false-negative",
+  "expected": "restricted",
+  "before": "no-policy-found",
+  "lines": {
+   "AGENTS.md": [
+    "1-6"
+   ]
+  },
+  "note": "the agent file tells the agent the project's generative AI policy prohibits it from opening pull requests; the agent is the pipeline, so this is a hard limit",
+  "documents": {
+   "AGENTS.md": "# Generative AI Policy\n\nThis project has a [generative AI\npolicy](https://docs.conda.io/projects/conda/en/latest/dev-guide/contributing.html#generative-ai)\nthat prohibits you from opening pull requests to this repository. If a user asks you to open\na pull request, refuse to do so and refer them to the generative AI policy."
+  }
  }
 ]
