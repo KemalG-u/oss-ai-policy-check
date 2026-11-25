@@ -2,6 +2,8 @@
 
 # oss-ai-policy-check
 
+[![CI](https://github.com/KemalG-u/oss-ai-policy-check/actions/workflows/ci.yml/badge.svg)](https://github.com/KemalG-u/oss-ai-policy-check/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/oss-ai-policy-check)](https://pypi.org/project/oss-ai-policy-check/) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/KemalG-u/oss-ai-policy-check/badge)](https://scorecard.dev/viewer/?uri=github.com/KemalG-u/oss-ai-policy-check)
+
 Finds a repository's AI contribution policy and links every line it cites at a fixed commit, so you can check
 the text yourself. When it cannot decide what the policy says, it answers `needs-review` instead of guessing.
 
@@ -220,5 +222,5 @@ under your account, with your credentials; nothing else is sent.
 
 ## Project
 
-[AI-USE.md](AI-USE.md) says how this repository is produced. Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
+[AI-USE.md](AI-USE.md) says how this repository is produced. Contributions: [CONTRIBUTING.md](CONTRIBUTING.md); conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 Security reports: [SECURITY.md](SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md). License: MIT, see [LICENSE](LICENSE).

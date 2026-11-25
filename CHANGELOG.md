@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Project health files: `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) and `CITATION.cff`; an OpenSSF
+  Scorecard workflow (`.github/workflows/scorecard.yml`, results published to the Scorecard API); README badges
+  for CI, PyPI and Scorecard. The release workflow now states `attestations: true` (PEP 740) for the PyPI upload.
 - Rule `agent-pr-prohibited` (`restricted`, agent instruction files only): a sentence that bars the agent from
   opening pull requests (conda: "prohibits you from opening pull requests"; "agents must not open pull requests";
   "do not open PRs on behalf of the user"). The pipeline is an agent, so this is a hard limit. Branch targets
