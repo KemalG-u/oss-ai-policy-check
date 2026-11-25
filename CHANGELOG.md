@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Weekly AI contribution policy index: `scripts/build_index.py` and `.github/workflows/index.yml` (Monday 04:00 UTC,
+  or by hand) run the `rules` classifier on up to 300 popular, recently active repositories and commit
+  `index/latest.json`, `index/history/YYYY-MM-DD.json` and `index/README.md` (counts, changes since the previous run).
+  A scan that nears the hourly API limit stops and is marked partial. The script is not part of the package.
+
 ## [0.3.1] - 2026-11-25
 
 ### Added
