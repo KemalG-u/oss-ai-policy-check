@@ -215,7 +215,7 @@
       "id": "agent-file-no-posting",
       "class": "restricted",
       "paths": "(?:^|/)(?:AGENTS|CLAUDE|GEMINI|AGENT_POLICY|Agents)\\.md$|copilot-instructions|\\.cursorrules",
-      "regex": "\\b(?:refuse|decline|do not|don't|never|must not)\\s+(?:\\w+\\s+){0,3}(?:open|create|submit|file)\\s+(?:\\w+\\s+){0,2}(?:pull requests?|PRs?|issues?)\\b|\\bnever\\s+post\\s+to\\s+GitHub|\\bon\\s+(?:the\\s+user's|a\\s+user's|their)\\s+behalf\\b[^.!?]{0,60}\\b(?:not|never)\\b",
+      "regex": "(?<!\\bthen\\s)(?<!\\boften\\s)(?<!\\busually\\s)(?<!\\bsometimes\\s)(?<!\\bwho\\s)(?<!\\bthey\\s)(?<!\\bpeople\\s)(?<!\\bfolks\\s)(?<!\\bsomeone\\s)(?<!\\banyone\\s)\\b(?:refuse|decline|do not|don't|never|must not)\\s+(?:\\w+\\s+){0,3}(?:open|create|submit|file)\\s+(?:\\w+\\s+){0,2}(?:pull requests?|PRs?|issues?)\\b|\\bnever\\s+post\\s+to\\s+GitHub|\\bon\\s+(?:the\\s+user's|a\\s+user's|their)\\s+behalf\\b[^.!?]{0,60}\\b(?:not|never)\\b",
       "exclude": [
         "\\b(?:without|for|about|labell?ed|unless|until|if|when|before|after|that only)\\b"
       ],

@@ -123,7 +123,7 @@ verdict equals the label; `needs-review` counts as not correct.
 | Claude mode | 55 of 60 (91.7%) | 55 of 56 | 4 | 1 | 82% - 96% |
 
 "Policy missed" is a repository that has an AI policy but got `no-policy-found`. The rules row was run on 2026-11-22
-and again on 2026-11-24 with v0.3.0 (same 42 of 60); the Claude mode row was measured once with v0.3.0 on 2026-11-22
+and again on 2026-11-24 with v0.3.0 and on 2026-11-25 with the `agent-file-no-posting` fix (same 42 of 60); the Claude mode row was measured once with v0.3.0 on 2026-11-22
 and has not been re-run. Caveats:
 
 - n = 60 and a single run; the model's output is not deterministic, so a second run or another 60 repositories would

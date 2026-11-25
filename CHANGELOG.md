@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `agent-file-no-posting` no longer treats a sentence that narrates what other people do as a restriction on the
+  agent ("People often say this and then never open a pull request", pylint `AGENTS.md`). Imperative and modal
+  instructions ("Never open a pull request.", "Do not open pull requests or issues.", "Agents must never open ...")
+  are still read as restrictions.
+- `tests/golden/run_gold.py` reads the SHAs of `source: org` rows from the note marker that says what `commit_sha`
+  is (`(repo sha ...)` in `gold.jsonl`, `(org sha ...)` in the gold4 file) and stops with an error when a row has
+  neither or both, instead of pinning the organization `.github` repository to a repository commit. New option
+  `--gold PATH` measures another label file.
+
 ## [0.3.0] - 2026-11-22
 
 ### Added

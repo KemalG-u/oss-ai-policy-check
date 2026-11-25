@@ -105,7 +105,7 @@ single annotator, pinned to SHAs). These are the figures to expect on repositori
 | Rules only | 42 of 60 (70.0%) | 42 of 53 (79.2%) | 7 | 2 | 57% - 80% |
 | Claude mode | 55 of 60 (91.7%) | 55 of 56 (98.2%) | 4 | 1 | 82% - 96% |
 
-The rules row was run on 2026-11-22 and again on 2026-11-24 with v0.3.0 (same 42 of 60); the Claude mode row was
+The rules row was run on 2026-11-22 and again on 2026-11-24 with v0.3.0 and on 2026-11-25 with the `agent-file-no-posting` fix (same 42 of 60, 2 policies missed); the Claude mode row was
 measured once with v0.3.0 on 2026-11-22 and has not been re-run. That row used Claude Sonnet 5.5 through a
 subscription as the judge, standing in for the API model; the default model `claude-opus-5-5` was not measured. n = 60 and one run, so the intervals are wide and a rerun can move
 the figures (the model's output is not deterministic). Older blind figures from earlier rules and earlier sets are

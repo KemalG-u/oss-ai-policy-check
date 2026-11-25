@@ -423,6 +423,33 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(self.verdict("- NEVER push commits or create pull requests without explicit user permission.", "AGENTS.md"), "no-policy-found")
         self.assertEqual(self.verdict("**Fully autonomous work:** STOP. Do not open pull requests or issues.", "AGENTS.md"), "no-policy-found")
 
+    def test_agent_file_narration_about_third_parties_is_not_a_restriction(self):
+        # pylint AGENTS.md: a sentence that describes what people do, not an instruction to the agent
+        pylint = ("Look for a comment like \"I'm working on this\" or \"Can I take this?\". People often say\n"
+                  "this and then never open a pull request, so a claim does not last forever:\n\n"
+                  "- The claim is **active** if the person who made it did something in the last 15 days.")
+        r = classify_documents({"AGENTS.md": pylint})
+        self.assertEqual(r["verdict"], "no-policy-found")
+        self.assertNotIn("agent-file-no-posting", {e["rule"] for e in r["evidence"]})
+        for text in ("Contributors often never open a pull request after claiming an issue.",
+                     "Sometimes they never file an issue for it.",
+                     "Someone who never opens a PR is not blocking the issue.",
+                     "Users who don't open an issue first get slow answers.",
+                     "Most people then never create a pull request."):
+            self.assertEqual(self.verdict(text, "AGENTS.md"), "no-policy-found", text)
+
+    def test_agent_file_real_instructions_stay_restricted(self):
+        # the narrative guard must not hide a genuine instruction to the agent (imperative or modal, any subject)
+        for text in ("Never open a pull request.",
+                     "- Never create an issue.",
+                     "Do not open pull requests or issues, or post comments.",
+                     "Agents must never open a pull request on GitHub.",
+                     "You must not submit pull requests.",
+                     "AI agents should refuse to open issues on behalf of users.",
+                     "Please don't open a PR from this repository.",
+                     "Never post to GitHub."):
+            self.assertEqual(self.verdict(text, "AGENTS.md"), "restricted", text)
+
     # --- permitted
     def test_permitted_welcome(self):
         for text in ("AI-assisted contributions are welcome.", "We are okay with contributors using AI tools.",
