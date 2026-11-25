@@ -73,9 +73,10 @@ When the files hold AI-policy text the tool cannot decide on, it says so instead
 ```
 VERDICT needs-review - mozilla-firefox/firefox @ a3178f3cbfac6e25d5bc7b6365c4ff520a42205e (a3178f3cbfac)
 confidence: low
-NEEDS HUMAN REVIEW (no-rule-decision): These paragraphs name AI and state a rule, but no rule of the tool decided on them.
+NEEDS HUMAN REVIEW (no-rule-decision): These paragraphs name AI and state a rule,
+  but no rule of the tool decided on them.
 evidence (4):
-  - needs-review (low): docs/contributing/ai-coding.md:13 - AI-assisted contributions must meet the same standards of correctness, security, and maintainability as any other
+  - needs-review (low): docs/contributing/ai-coding.md:13 - AI-assisted contributions must meet the same standards ...
     https://github.com/mozilla-firefox/firefox/blob/a3178f3cbfac6e25d5bc7b6365c4ff520a42205e/docs/contributing/ai-coding.md#L13
   ... (3 more)
 ```
